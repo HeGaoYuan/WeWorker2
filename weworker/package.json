@@ -1,6 +1,6 @@
 {
   "name": "weworker",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "WeWorker — AI 操作网站的桌面应用",
   "type": "module",
   "main": "electron/main.js",
@@ -13,7 +13,6 @@
     "dev:renderer": "cd renderer && npm run dev",
     "dev:electron": "wait-on --timeout 30000 tcp:localhost:5173 && cross-env NODE_ENV=development electron .",
     "build:renderer": "cd renderer && npm run build",
-    "build:backend": "cd backend && pyinstaller build.spec --distpath ../build/backend-dist --workpath ../build/backend-work --noconfirm",
     "build:backend-ts": "node scripts/bundle-backend-ts.cjs",
     "gen:routes": "node scripts/gen-routes.mjs",
     "gen:routes:check": "node scripts/gen-routes.mjs --check",
@@ -48,7 +47,9 @@
     "afterPack": "scripts/after-pack.cjs",
     "files": [
       "electron/**",
-      "renderer/dist/**"
+      "renderer/dist/**",
+      "deployment.json",
+      "deployment-config.cjs"
     ],
     "extraResources": [
       {
@@ -173,7 +174,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://example.com/downloads/"
+        "url": "https://111.230.33.112/downloads/"
       }
     ]
   }
