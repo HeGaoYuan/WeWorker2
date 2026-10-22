@@ -19,10 +19,6 @@
 - 工具包发布对生成产物的 CLI 校验改为进程内执行，避免安全软件长时间挂起新建子进程导致发布卡死。
 - 状态栏移除网站探索agent状态入口；未完成的首次开发自动沿用上次来源探索，无需重新选择。
 
-## [1.1.0] - 2026-10-13
-
-<!-- TODO: 待填写 1.1.0 用户可见变更条目，分类参考「新增 / 修复 / 改进 / 安全与隐私」；同步更新 weworker/changelog.json 的 items -->
-
 ## [1.0.0] - 2026-09-14
 
 ### 新增
@@ -45,5 +41,4 @@
 - 这是 WeWorker 重新初始化开源仓库后的首个公开版本。
 - 开源仓库不继承内部仓库的 Git 历史和内部版本记录。
 
-[1.1.0]: https://github.com/WeWorker/WeWorker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/WeWorker/WeWorker/releases/tag/v1.0.0
