@@ -1064,7 +1064,7 @@ test("managed page calls open the declared route without user setup and do not r
   const worker = loadServiceWorker({ managedCatalog: { available: true, managedNames: ['fixture'], adapters: [manifest] } });
   const result = await worker.callNativeTool('fixture.list');
   assert.equal(result.result.tabId, 999);
-  assert.equal((await worker.context.chrome.tabs.get(999)).url, 'https://example.com/');
+  assert.equal((await worker.context.chrome.tabs.get(999)).url, 'http://example.com/');
   let calls = 0;
   worker.context.chrome.tabs.sendMessage = async () => { calls++; throw new Error('The message port closed before a response was received.'); };
   const failed = await worker.callNativeTool('fixture.list');
@@ -1086,7 +1086,7 @@ test("managed page calls do not select helper subdomain tabs as the execution pa
   });
   const result = await worker.callNativeTool('gitee.com.search');
   assert.equal(result.result.tabId, 999);
-  assert.equal((await worker.context.chrome.tabs.get(999)).url, 'https://gitee.com/');
+  assert.equal((await worker.context.chrome.tabs.get(999)).url, 'http://gitee.com/');
 });
 
 test("managed page calls hand an existing SSO tab to login instead of opening a second business tab", async () => {
@@ -1211,7 +1211,7 @@ test("a route-less command reuses the package tab that moved to another declared
   // An explicit route still opens its own host.
   const routed = await worker.callNativeTool('shop.example.com.home');
   assert.equal(routed.result.tabId, 999);
-  assert.equal((await worker.context.chrome.tabs.get(999)).url, 'https://www.example.com/');
+  assert.equal((await worker.context.chrome.tabs.get(999)).url, 'http://www.example.com/');
 });
 
 test("a redirect to an undeclared host names the host and is marked as a package problem", async () => {
@@ -1247,7 +1247,7 @@ test("a route redirected to another declared site domain runs there and reuses t
   assert.equal(first.result.tabId, 999);
   const second = await worker.callNativeTool('shop.example.com.orders');
   assert.equal(second.result.tabId, 999);
-  assert.deepEqual(created, ['https://order.example.com/']);
+  assert.deepEqual(created, ['http://order.example.com/']);
 });
 
 test("a redirect outside every declared site domain is still refused", async () => {
