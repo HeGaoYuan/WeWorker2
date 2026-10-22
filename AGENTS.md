@@ -26,6 +26,7 @@ WeWorker 是桌面端 AI 工作助手项目，包含 Electron 桌面端、TypeSc
 ## 关键配置与依赖关系
 
 - `weworker/build-profile.json` 是桌面端构建 profile 基线；新增 Provider、Adapter 打包范围或构建元数据时必须同步验证。
+- `weworker/default-site.json` 独立控制首页站点默认顺序，应与本仓库内置 Adapter 清单同步；首页初始展示前五个可用站点，用户保存的顺序和数量优先。
 - `extension/manifest.json` 是浏览器扩展 manifest 基线；新增权限、host 权限或扩展能力时必须确认不会引入私有域名、私网 IP 或过宽权限。
 - 扩展内置的 `adapters/index.json` 与 `adapters/registry.json` 由 `weworker/scripts/prepare-build.cjs` 构建时生成（当前恒为空清单），不得手工维护或提交生成产物；新增、删除或重命名 Adapter 时只需更新 `adapters/<id>/manifest.json` 与 `weworker/build-profile.json` 的打包范围。
 - `weworker/scripts/build-profile-overlay.cjs` 负责按 profile/overlay 生成构建配置；修改构建配置时必须验证生成结果和最终构建入口一致。

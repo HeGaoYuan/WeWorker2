@@ -13,6 +13,11 @@ import { describeDesktopAdapters, toggleDesktopAdapter, refreshDesktopAdapterSki
 // @ts-expect-error Shared JavaScript installation implementation, exercised directly with temporary fixtures.
 import { installAdapter, selectAdapter, removeInstalledAdapter } from '../../../../webcli/adapter-install-store.js'
 
+// Config is the input; shared runtime tests must also work with variant defaults.
+vi.mock('../../../default-site.json', () => ({
+  default: ['second.example.com', 'missing.example.com', 'first.example.com'],
+}))
+
 let root: string
 const files = (version = '1.0.0', id = 'list') => new Map([
   ['manifest.json', JSON.stringify({ schema_version: 2, name: 'demo', version, description: 'Fixture', match: ['example.com'],
@@ -47,6 +52,28 @@ beforeEach(() => {
 afterEach(() => { clearAdapterCache(); vi.unstubAllEnvs(); fs.rmSync(root, { recursive: true, force: true }) })
 
 describe('desktop Adapter catalog and Skill continuity', () => {
+  it('applies default-site priority after merging managed and legacy adapters', () => {
+    // Managed inventory sorts these alphabetically; presentation must follow the JSON.
+    for (const name of ['first.example.com', 'second.example.com', 'extra.example.com']) {
+      const pkg = files()
+      const manifest = JSON.parse(pkg.get('manifest.json')!)
+      manifest.name = name
+      manifest.match = [name.replaceAll('.', '-') + '.example.com']
+      pkg.set('manifest.json', JSON.stringify(manifest))
+      installAdapter({ files: pkg, origin: { kind: 'local' } })
+    }
+    const adapters = parseAllAdapters()
+    expect([...adapters.keys()]).toEqual([
+      'second.example.com', 'first.example.com', 'demo', 'extra.example.com',
+    ])
+    // Configured but absent sites are skipped; disabled metadata stays available to management.
+    expect(adapters.has('missing.example.com')).toBe(false)
+    toggleDesktopAdapter('second.example.com')
+    const updated = parseAllAdapters()
+    expect([...updated.keys()]).toEqual([...adapters.keys()])
+    expect(updated.get('second.example.com')?.managed?.enabled).toBe(false)
+  })
+
   it('retains compatible names as metadata on a single canonical tool', () => {
     const pkg = files('1.0.0', 'list-items')
     const manifest = JSON.parse(pkg.get('manifest.json')!)
