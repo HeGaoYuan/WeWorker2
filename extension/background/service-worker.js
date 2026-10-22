@@ -2812,7 +2812,9 @@ async function handleNativeMessage(msg) {
               message: '网站正在登录，登录完成后将继续调用。',
             });
           }
-          const startUrl = assertAdapterNavigationUrl(selected.manifest, 'https://' + route + '/');
+          // HTTP is the neutral managed-page entry: HTTPS-only sites redirect themselves,
+          // while internal sites that do not serve HTTPS remain reachable.
+          const startUrl = assertAdapterNavigationUrl(selected.manifest, 'http://' + route + '/');
           tab = await createBrowserTab({ url: startUrl, active: false });
           // Learn where the site sends this host (regional or brand domains) before the first call.
           const landed = await waitForManagedPageReady(tab.id, selected.manifest, true, 25000);
