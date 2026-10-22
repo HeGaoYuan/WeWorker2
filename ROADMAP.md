@@ -1,5 +1,7 @@
 # WeWorker Roadmap
 
+- 2026-10-22（对话命令展开状态）：命令组使用首条命令的稳定标识，无 ID 时使用组起始位置，避免流式追加命令时组件重建并重置用户展开状态。验证：8 项分组回归测试、JS 语法检查、Renderer 生产构建通过；Edge 浏览器在 1200 px 和 390 px 下使用真实消息组件验证命令完成、追加和本轮结束均保留手动展开/折叠状态，组与各命令可独立切换，无页面异常或横向溢出。未验证：完整 Electron 交互及安装包。
+
 - 2026-10-22（Adapter 根目录图标）：将 33 个站点图标迁入各自 `adapters/<id>/icon.png` 或 `icon.svg`，移除 Renderer 集中映射；包校验、摘要、安装复制与桌面目录统一携带图标，Backend 通过 `iconUrl` 提供当前生效包的图片，Renderer 消费该字段。补充格式、大小和自包含 SVG 校验及维护文档。验证：33 个图标与确认清单逐字节一致，完整内置包构建、摘要及桌面数据 URL 检查通过；WebCLI 69 项、Backend 13 项、Renderer 3 项聚焦测试、Backend 类型检查及 Renderer 生产构建通过。未验证：本次提交的完整 Electron 安装包与真实桌面交互。
 
 - 2026-10-22：重构安装期托管 WebCLI Skill 重建逻辑为独立模块。安装／启动同步时，内置 `webcli` 与 `webcli-*` 共享 Skill、以及当前 Adapter catalog 精确识别的 `webcli-<adapter-id>` 均直接重建，旧版无 marker 的自动生成内容会升级为当前 package digest 对应的说明；仅前缀相同但不属于 catalog 的自定义 Skill 保持不变。已禁用或不可用的已知 Adapter 同名 Skill 会写为 unavailable，不再保留旧工具指引。验证：WebCLI Adapter view／安装器 17 项、Backend Skill 管理 19 项、Backend 类型检查和 `npm run build:webcli` 通过；打包过程保留既有列映射缺失警告，未影响构建完成。未验证：完整安装包在已有历史 Skill 目录上的实际升级。

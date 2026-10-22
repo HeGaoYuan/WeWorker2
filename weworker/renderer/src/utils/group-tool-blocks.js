@@ -20,6 +20,7 @@ export function partitionContentBlocks(content) {
   while (i < content.length) {
     const block = content[i]
     if (isGroupableToolUse(block)) {
+      const startIndex = i
       const blocks = []
       while (i < content.length && isGroupableToolUse(content[i])) {
         blocks.push(content[i])
@@ -28,7 +29,8 @@ export function partitionContentBlocks(content) {
       items.push({
         kind: 'tool_exec_group',
         blocks,
-        key: blocks.map((entry) => entry.id).filter(Boolean).join('-') || `tool-group-${i}`,
+        // Appending streamed commands must not remount the group and reset disclosure state.
+        key: `tool-group-${block.id ?? startIndex}`,
       })
       continue
     }
