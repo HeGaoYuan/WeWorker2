@@ -49,6 +49,32 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
 describe('effective Adapter CLI views and generated Skills', () => {
+  it('keeps site help compact and command help parameter-specific without executing', () => {
+    install('1.0.0');
+    for (const args of [['demo', '-h'], ['demo', 'help'], ['adapter', 'demo', '--help']]) {
+      const output = success(args);
+      expect(output).toContain('Usage: webcli demo <command> [options]');
+      expect(output).toContain('Commands:');
+      expect(output).not.toContain('--count');
+    }
+    for (const args of [['demo', 'list', '-h'], ['demo', 'list', '--help'], ['demo', 'list', '-help'], ['demo', 'list', 'help'], ['adapter', 'demo', 'list', '--help'], ['call', 'demo.list', '--help']]) {
+      const output = success(args);
+      expect(output).toContain('Usage: webcli demo list [options]');
+      expect(output).toContain('--count=<integer>');
+      expect(output).toContain('(required)');
+    }
+    expect(success(['adapter', 'demo', 'list', '--help', '--output-format=yaml'])).toContain('count');
+    expect(success(['call', 'demo.list', '-h', '--output-format=markdown'])).toContain('count');
+    const site = JSON.parse(success(['demo', '-h', '-f', 'json']));
+    expect(site.tools[0]).not.toHaveProperty('parameters');
+    expect(JSON.parse(success(['demo', '-h', '--json'])).tools[0]).not.toHaveProperty('parameters');
+    expect(JSON.parse(success(['adapter', 'demo', '-h', '--json'])).tools[0]).not.toHaveProperty('parameters');
+    const command = JSON.parse(success(['demo', 'list', '-h', '-f', 'json']));
+    expect(command.params).toContainEqual(expect.objectContaining({ name: 'count', required: true }));
+    expect(run(['demo', 'missing', '-h']).status).not.toBe(0);
+  });
+
+
   it('uses the same version, digest and tools in list, info, help and Skill without changing the package', () => {
     const installed = install();
     const listing = JSON.parse(success(['adapter', 'list', '--json'])).filter((entry) => entry.id === 'demo');

@@ -12,6 +12,7 @@ import type { RegistryScenarioDef } from './site-scenarios.js'
 import type { PromptVarDisplayMap } from './prompt-var-display.js'
 import { mergePromptVarDisplay } from './prompt-var-display.js'
 import { clearDesktopAdapterCatalogCache, getDesktopAdapterCatalog } from './adapter-catalog-cache.js'
+import defaultSiteOrder from '../../default-site.json' with { type: 'json' }
 
 const log = createLogger('adapter-parser')
 
@@ -484,7 +485,16 @@ export function parseAllAdapters(): Map<string, ParsedAdapter> {
       icon: manifest.icon || 'globe', promptVarDisplay: mergePromptVarDisplay({}, manifest.prompt_var_display),
     })
   }
-  return result
+  const ordered = new Map<string, ParsedAdapter>()
+  for (const id of defaultSiteOrder) {
+    const adapter = result.get(id)
+    if (adapter) ordered.set(id, adapter)
+  }
+  // Installed sites outside the defaults remain available in inventory order.
+  for (const [id, adapter] of result) {
+    if (!ordered.has(id)) ordered.set(id, adapter)
+  }
+  return ordered
 }
 
 /** Clear the cache (useful for testing or hot-reload) */

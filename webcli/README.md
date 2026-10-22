@@ -229,3 +229,9 @@ Skill 发布只包含 `skills/webcli/SKILL.md`。Extension、运行时和 Adapte
 
 - [extension/README.md](../extension/README.md) — 浏览器扩展的工作原理、适配器注册流程、适配器开发指南
 - [metrics-server/README.md](../metrics-server/README.md) — 埋点服务端：上报接收、聚合查询、部署
+
+### 分层帮助
+
+`webcli <site> -h` 仅展示命令摘要；使用 `webcli <site> <command> --help` 或 `webcli call <site>.<command> --help` 查看完整参数。业务必填参数作为命名选项标注 `(required)`。
+
+站点帮助 JSON 省略业务参数；命令帮助 JSON 提供参数，完整元数据仍可通过 `webcli adapter info <site> --json` 获取。显式 JSON、YAML、Markdown 输出继续沿用统一格式化接口。
