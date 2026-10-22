@@ -137,7 +137,7 @@ describe('Skill management HTTP routes', () => {
     expect(buildEnabledSkillIndex(fixtureState.root)).toBe('')
   })
 
-  it('keeps bundled Skills disabled through startup install and per-turn synchronization', async () => {
+  it('rebuilds reserved bundled Skills at startup while retaining other bundled Skill disablement', async () => {
     const builtin = path.join(root, 'builtin')
     fs.mkdirSync(builtin)
     fs.writeFileSync(path.join(builtin, '.profile.json'), JSON.stringify({ schema_version: 1, profile: 'public', adapters: [] }))
@@ -151,10 +151,11 @@ describe('Skill management HTTP routes', () => {
       expect((await post(`/skills/${name}/toggle`, { enabled: false })).status).toBe(200)
     }
     await installSkills({ target: fixtureState.root })
-    syncBundledWebcliSkills(fixtureState.root, path.resolve('../../webcli/skills'))
-    for (const name of ['webcli', 'complex-task-planner', 'webcli-browser', 'webcli-api-exploration']) {
-      expect(fs.existsSync(path.join(fixtureState.root, name, 'SKILL.md'))).toBe(false)
-      expect(fs.readFileSync(path.join(fixtureState.root, name, 'SKILL.md.disabled'), 'utf8').length).toBeGreaterThan(0)
+    for (const name of ['webcli', 'webcli-browser', 'webcli-api-exploration']) {
+      expect(fs.existsSync(path.join(fixtureState.root, name, 'SKILL.md'))).toBe(true)
+      expect(fs.existsSync(path.join(fixtureState.root, name, 'SKILL.md.disabled'))).toBe(false)
     }
+    expect(fs.existsSync(path.join(fixtureState.root, 'complex-task-planner', 'SKILL.md'))).toBe(false)
+    expect(fs.readFileSync(path.join(fixtureState.root, 'complex-task-planner', 'SKILL.md.disabled'), 'utf8').length).toBeGreaterThan(0)
   })
 })

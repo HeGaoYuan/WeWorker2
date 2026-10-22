@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertAdapterIdentity } from './adapter-catalog.js';
 import { assertManagedDirectory, assertManagedFile } from './adapter-package-files.js';
@@ -37,53 +37,65 @@ export function createManagedAdapterSkillValidator(options = {}) {
 }
 export const isManagedAdapterSkillCurrent = (content, directoryName) => createManagedAdapterSkillValidator()(content, directoryName);
 
-function writeOwned(target, body, record) {
+function writeOwned(target, body, record, { overwrite = false } = {}) {
   const root = join(target, 'webcli-' + assertAdapterIdentity(record.name));
   assertManagedDirectory(root);
   mkdirSync(root, { recursive: true });
   const disabled = assertManagedFile(root, 'SKILL.md.disabled');
-  const file = existsSync(disabled) ? disabled : assertManagedFile(root, 'SKILL.md');
+  const file = assertManagedFile(root, 'SKILL.md');
+  if (overwrite && existsSync(disabled)) rmSync(disabled, { force: true });
+  const selected = overwrite ? file : (existsSync(disabled) ? disabled : file);
   const content = body + marker + JSON.stringify({ ...record, schemaVersion: 1, contentDigest: hash(body) }) + ' -->\n';
-  if (existsSync(file)) {
-    const existing = readFileSync(file, 'utf8');
+  if (existsSync(selected)) {
+    const existing = readFileSync(selected, 'utf8');
     const previous = readOwned(existing);
-    if (!previous || previous.name !== record.name || previous.profile !== record.profile) return false;
-    // Hosts refresh before every chat turn; an identical owned file needs no write or fsync.
+    if (!overwrite && (!previous || previous.name !== record.name || previous.profile !== record.profile)) return false;
+    // Hosts refresh before every chat turn; an identical file needs no write or fsync.
     if (existing === content) return true;
   }
   const temporary = assertManagedFile(root, 'SKILL.' + randomUUID() + '.tmp');
   const fd = openSync(temporary, 'wx', 0o600);
   try { writeFileSync(fd, content); fsyncSync(fd); } finally { closeSync(fd); }
-  renameManagedFile(temporary, file);
+  renameManagedFile(temporary, selected);
   return true;
 }
 
-/** Refresh only unmodified generated files owned by this profile. Never delete user Skills. */
-export function syncManagedAdapterSkills({ target, snapshot, profile, adapterId = null }) {
+/**
+ * Synchronize exact catalog-managed Adapter Skill directories. Installation can
+ * force replacement to migrate legacy pre-marker Skills; per-turn refreshes
+ * retain the conservative ownership check unless explicitly requested.
+ */
+export function syncManagedAdapterSkills({ target, snapshot, profile, adapterId = null, overwrite = false }) {
   assertManagedDirectory(target);
   mkdirSync(target, { recursive: true });
   const active = new Map(snapshot.adapters.map((adapter) => [adapter.id, adapter]));
+  const managedNames = snapshot.managedNames instanceof Set
+    ? snapshot.managedNames
+    : new Set(snapshot.managedNames || active.keys());
   let installed = 0, retired = 0;
   const preserved = [];
   for (const adapter of snapshot.adapters) {
     if (adapterId && adapter.id !== adapterId) continue;
     if (writeOwned(target, managedAdapterSkill(adapter), {
       name: adapter.id, profile, packageDigest: adapter.digest, version: adapter.version, status: 'active',
-    })) installed++;
+    }, { overwrite })) installed++;
     else preserved.push(adapter.id);
   }
   for (const entry of readdirSync(target, { withFileTypes: true })) {
     if (!entry.isDirectory() || !entry.name.startsWith('webcli-')) continue;
     const name = entry.name.slice(7);
-    if ((adapterId && name !== adapterId) || active.has(name)) continue;
+    if ((adapterId && name !== adapterId) || active.has(name) || !managedNames.has(name)) continue;
     const disabled = assertManagedFile(target, entry.name + '/SKILL.md.disabled');
-    const file = existsSync(disabled) ? disabled : assertManagedFile(target, entry.name + '/SKILL.md');
-    if (!existsSync(file)) continue;
-    const previous = readOwned(readFileSync(file, 'utf8'));
-    if (!previous || previous.name !== name || previous.profile !== profile || previous.status === 'unavailable') continue;
+    const file = assertManagedFile(target, entry.name + '/SKILL.md');
+    if (!overwrite && !existsSync(disabled) && !existsSync(file)) continue;
+    if (!overwrite) {
+      const selected = existsSync(disabled) ? disabled : file;
+      const previous = readOwned(readFileSync(selected, 'utf8'));
+      if (!previous || previous.name !== name || previous.profile !== profile || previous.status === 'unavailable') continue;
+    }
     const body = '---\nname: ' + JSON.stringify('webcli-' + name) + '\ndescription: "Adapter unavailable; reload current catalog"\n---\n\n'
       + 'This Adapter is disabled, removed, or unavailable. Do not call tools from earlier versions of this Skill.\n';
-    if (writeOwned(target, body, { name, profile, status: 'unavailable' })) retired++;
+    if (writeOwned(target, body, { name, profile, status: 'unavailable' }, { overwrite })) retired++;
   }
   return { installed, retired, preserved };
 }

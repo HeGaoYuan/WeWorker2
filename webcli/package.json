@@ -66,6 +66,7 @@
     "adapter-desktop.d.ts",
     "managed-adapter-cli.js",
     "adapter-skill-sync.js",
+    "managed-skill-installer.js",
     "adapter-install-store.js",
     "adapter-state.js",
     "adapter-state-watch.js",
