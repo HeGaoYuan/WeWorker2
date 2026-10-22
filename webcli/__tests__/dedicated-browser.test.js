@@ -223,15 +223,15 @@ test('marks the extension from inside its service worker, waiting for it to be r
         evaluations += 1
         assert.match(params.expression, new RegExp(BROWSER_INSTANCE_STORAGE_KEY))
         assert.match(params.expression, /fixture-token/)
-        return evaluations < 2
-          ? { exceptionDetails: { exception: { description: 'ReferenceError: chrome is not defined' } } }
-          : { result: { value: 'ok' } }
+        if (evaluations === 1) return { exceptionDetails: { exception: { description: 'ReferenceError: chrome is not defined' } } }
+        if (evaluations === 2) return { result: { value: '__weworker_extension_storage_not_ready__' } }
+        return { result: { value: 'ok' } }
       }
       return {}
     },
   }
   await markExtensionInstance(cdp, 'extid', { kind: 'dedicated', token: 'fixture-token' }, { pollMs: 1 })
-  assert.equal(evaluations, 2)
+  assert.equal(evaluations, 3)
   assert.deepEqual(sent.at(-1), ['Target.detachFromTarget', null])
   const failing = { send: async (method) => (method === 'Target.getTargets' ? { targetInfos: [] } : {}) }
   await assert.rejects(markExtensionInstance(failing, 'extid', {}, { timeoutMs: 5, pollMs: 1 }), /did not start/)

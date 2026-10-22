@@ -243,6 +243,8 @@ async function withTimeout(promise, ms, message) {
 }
 
 /** Evaluate in the extension's service worker; returns the value, or throws with `label`. */
+const EXTENSION_STORAGE_NOT_READY = '__weworker_extension_storage_not_ready__';
+
 async function evaluateInExtensionWorker(cdp, extensionId, expression, label, { timeoutMs = EXTENSION_WORKER_TIMEOUT_MS, pollMs = 250 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let worker;
@@ -258,12 +260,14 @@ async function evaluateInExtensionWorker(cdp, extensionId, expression, label, { 
   try {
     for (;;) {
       const response = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
-      if (!response?.exceptionDetails && response?.result?.value !== undefined) return response.result.value;
-      const description = response?.exceptionDetails?.exception?.description || '';
-      // The worker's extension APIs are bound shortly after the target appears.
-      if (!description.includes('chrome is not defined') || Date.now() > deadline) {
-        throw new Error(`${label}: ${description || 'no result'}`);
-      }
+      const value = response?.result?.value;
+      if (!response?.exceptionDetails && value !== undefined && value !== EXTENSION_STORAGE_NOT_READY) return value;
+      const description = value === EXTENSION_STORAGE_NOT_READY
+        ? 'extension storage API did not become ready'
+        : response?.exceptionDetails?.exception?.description || '';
+      // The worker target appears before Chrome finishes binding extension APIs.
+      const shouldRetry = value === EXTENSION_STORAGE_NOT_READY || description.includes('chrome is not defined');
+      if (!shouldRetry || Date.now() > deadline) throw new Error(`${label}: ${description || 'no result'}`);
       await wait(pollMs);
     }
   } finally {
@@ -273,7 +277,8 @@ async function evaluateInExtensionWorker(cdp, extensionId, expression, label, { 
 
 /** Write the instance marker from inside the extension's service worker (no browser-context CDP API needed). */
 export async function markExtensionInstance(cdp, extensionId, marker, options = {}) {
-  const expression = `chrome.storage.local.set(${JSON.stringify({ [BROWSER_INSTANCE_STORAGE_KEY]: marker })}).then(() => 'ok')`;
+  const storage = JSON.stringify({ [BROWSER_INSTANCE_STORAGE_KEY]: marker });
+  const expression = `globalThis.chrome?.storage?.local?.set ? globalThis.chrome.storage.local.set(${storage}).then(() => 'ok') : ${JSON.stringify(EXTENSION_STORAGE_NOT_READY)}`;
   const value = await evaluateInExtensionWorker(cdp, extensionId, expression, 'Failed to mark the extension instance', options);
   if (value !== 'ok') throw new Error('Failed to mark the extension instance: no result');
 }

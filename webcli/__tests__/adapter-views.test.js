@@ -260,16 +260,32 @@ describe('effective Adapter CLI views and generated Skills', () => {
     expect(existsSync(join(outside, 'SKILL.md'))).toBe(false);
   });
 
-  it('installs derived Skills through the actual installer and updates them after package selection changes', () => {
+  it('installs derived Skills through the actual installer and replaces legacy managed names without touching unknown custom names', () => {
     install();
+    mkdirSync(join(target, 'webcli-demo'), { recursive: true });
+    writeFileSync(join(target, 'webcli-demo/SKILL.md'), 'legacy generated Skill');
+    mkdirSync(join(target, 'webcli-user-custom'), { recursive: true });
+    writeFileSync(join(target, 'webcli-user-custom/SKILL.md'), 'custom Skill must remain');
+    writeFileSync(join(target, 'webcli-user-custom/.weworker-custom-skill.json'), '{"kind":"custom"}');
     success(['install', '--skills', 'demo', '--target', target]);
     expect(skill()).toContain('webcli call demo.list');
+    expect(skill()).not.toContain('legacy generated Skill');
+    expect(readFileSync(join(target, 'webcli-user-custom/SKILL.md'), 'utf8')).toBe('custom Skill must remain');
     install('1.1.0', 'changed');
     success(['install', '--skills', 'demo', '--target', target]);
     expect(skill()).toContain('webcli call demo.changed');
     selectAdapter('demo', 'disabled');
     success(['install', '--skills', 'demo', '--target', target]);
     expect(skill()).not.toContain('webcli call');
+  });
+
+  it('replaces reserved bundled webcli Skills during installation', () => {
+    mkdirSync(join(target, 'webcli'), { recursive: true });
+    writeFileSync(join(target, 'webcli/SKILL.md'), 'legacy bundled Skill');
+    writeFileSync(join(target, 'webcli/SKILL.md.disabled'), 'disabled legacy bundled Skill');
+    success(['install', '--skills', '--target', target]);
+    expect(readFileSync(join(target, 'webcli/SKILL.md'), 'utf8')).not.toContain('legacy bundled Skill');
+    expect(existsSync(join(target, 'webcli/SKILL.md.disabled'))).toBe(false);
   });
 
   it('rejects a broken registry instead of exposing a stale Skill or legacy catalog', () => {

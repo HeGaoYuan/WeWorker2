@@ -2,6 +2,8 @@
 
 - 2026-10-22（Adapter 根目录图标）：将 33 个站点图标迁入各自 `adapters/<id>/icon.png` 或 `icon.svg`，移除 Renderer 集中映射；包校验、摘要、安装复制与桌面目录统一携带图标，Backend 通过 `iconUrl` 提供当前生效包的图片，Renderer 消费该字段。补充格式、大小和自包含 SVG 校验及维护文档。验证：33 个图标与确认清单逐字节一致，完整内置包构建、摘要及桌面数据 URL 检查通过；WebCLI 69 项、Backend 13 项、Renderer 3 项聚焦测试、Backend 类型检查及 Renderer 生产构建通过。未验证：本次提交的完整 Electron 安装包与真实桌面交互。
 
+- 2026-10-22：重构安装期托管 WebCLI Skill 重建逻辑为独立模块。安装／启动同步时，内置 `webcli` 与 `webcli-*` 共享 Skill、以及当前 Adapter catalog 精确识别的 `webcli-<adapter-id>` 均直接重建，旧版无 marker 的自动生成内容会升级为当前 package digest 对应的说明；仅前缀相同但不属于 catalog 的自定义 Skill 保持不变。已禁用或不可用的已知 Adapter 同名 Skill 会写为 unavailable，不再保留旧工具指引。验证：WebCLI Adapter view／安装器 17 项、Backend Skill 管理 19 项、Backend 类型检查和 `npm run build:webcli` 通过；打包过程保留既有列映射缺失警告，未影响构建完成。未验证：完整安装包在已有历史 Skill 目录上的实际升级。
+
 - 2026-10-22：WebCLI 站点帮助统一显示 Usage、命令摘要和通用选项，业务参数仅在命令帮助展示；修复站点简写、adapter 入口和 call 入口的帮助分发，保留显式输出格式及 JSON 兼容入口。验证：帮助布局、Adapter 视图和输出格式共 29 项回归通过，公开 Profile 33 个托管 Adapter 及 WebCLI bundle 构建通过，JS 语法与差异检查通过。未验证：真实浏览器业务调用和完整安装包。
 
 - 2026-10-22：将当前发布版本统一回归为 `1.0.0`，同步桌面主包、Renderer、Backend、浏览器扩展、官网、指标服务、对应 lockfile 元数据、下载页版本和公开版本记录；WebCLI 保持独立的 `1.0.4`，并修正其 lockfile 遗留的 `1.1.0` 根版本。保留网站探索组件与各 Adapter 的独立版本，也不改测试夹具、第三方依赖或历史版本记录。验证：公开配置一致性检查、3 项版本聚焦测试、涉及的 JSON 解析和差异检查通过；按要求未执行官网或桌面安装包构建，待 PR 合并后验证。
@@ -15,6 +17,8 @@
 - 2026-10-22：将官网、下载和 GitHub 更新地址统一收敛到 `weworker/deployment.json`，公共默认官网使用 `https://111.230.33.112`，下载地址使用实测可用的 `http://111.230.33.112/downloads/`，GitHub 更新地址两边共用。Electron 更新模块、设置页和 electron-builder 均读取同一份配置；构建时生成 profile-specific 发布配置，闭源构建只需覆盖该 JSON 即可切换官网和自更新地址。增加 URL 协议及格式校验，并把配置文件随安装包打包。验证：构建入口 18 项、JavaScript 语法检查、Renderer 生产构建和 Windows x64 Electron 完整构建通过；检查 `app.asar` 确认包含 `deployment.json` 和校验模块，生成的发布配置使用 `http://111.230.33.112/downloads/`。
 
 - 2026-10-22：统一桌面打包入口为 `weworker/package.json` 中的 `npm run build:win` / `npm run build:mac`，移除开源初始提交遗留的独立 BAT/SH 打包脚本及 Python 后端 `build:backend` 命令，同步桌面 README 和本地构建指南。新增命令链路回归，在已有旧后端的隔离夹具中验证先重建再打包、后端失败则停止。验证：入口链路、后端 bundle 与 Adapter 打包范围共 11 项测试通过，JS 语法及差异检查通过；本轮清理前已完成同一 npm 流程的 Windows x64 完整构建并核对安装包内的新提示词。未验证：macOS 完整安装包（命令链路使用构建阶段替身验证），清理后未重复完整 Windows 构建；用户提供的发布包缺失提示词的实际构建来源仍待确认。
+
+- 2026-10-22：修复 WeWorker 浏览器启动时扩展 Service Worker 已出现、但 `chrome.storage.local` 尚未完成绑定导致实例标记报错并反复重启的问题。标记写入改为显式检测 storage API 就绪；未就绪时沿用既有超时窗口轮询，超时仍返回明确启动错误，不会掩盖持续异常。验证：WebCLI 专用浏览器聚焦测试 25/25、桌面端 Bridge 与 WebCLI 构建通过，生成 Bridge 已确认包含修复；构建过程存在既有可选列映射文件缺失警告，未影响完成。未验证：真实 Chrome/Edge 启动与打包版。
 
 - 2026-10-21：修复托管网站 Adapter 在页面型命令前被通用 Agent 提示强制 `open_browser`、导致 SSO 跳转时出现重复业务标签的问题。常规与专属 Agent 现在直接调用 Adapter 业务工具，宿主负责匹配/创建页面及登录；仅用户明确要求、通用浏览器/探索流程或 Skill 明确要求时才手工开页。扩展在无业务标签但发现同站点 SSO 登录标签时返回结构化 `AUTH_REQUIRED`，交由既有登录流程复用，避免新建第二个业务标签。专属 Skill 生成同步移除认证站点默认登录预检。验证：扩展路由 44 项、Backend 提示词/专属 Agent 聚焦 11 项、Backend 类型检查和 `npm run build:webcli` 通过；打包过程存在既有列映射缺失警告，未影响构建完成。未验证：真实 SSH/SSO 会话与完整安装包。
 

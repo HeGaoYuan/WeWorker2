@@ -22,7 +22,7 @@ import { generateSkillContent } from "./skill-writer.js";
 import { loadAdapterTools } from "./adapter-cli.js";
 import { resolveAdaptersDir, resolveUserAdaptersDir, resolveAdapterPaths } from "./paths.js";
 import { managedAdapterViews } from './adapter-views.js';
-import { syncManagedAdapterSkills } from './adapter-skill-sync.js';
+import { installManagedRuntimeSkills, isReservedBundledSkillName } from './managed-skill-installer.js';
 
 
 
@@ -329,7 +329,13 @@ async function getInstalledAdapters(snapshot) {
 
 export async function installSkills({ target, adapterId }) {
   const snapshot = managedAdapterViews();
-  const managed = syncManagedAdapterSkills({ target, snapshot, profile: resolveAdapterPaths().profile, adapterId });
+  const managed = installManagedRuntimeSkills({
+    target,
+    snapshot,
+    profile: resolveAdapterPaths().profile,
+    bundledSkillsDir: BUNDLED_SKILLS_DIR,
+    adapterId,
+  });
 
   mkdirSync(target, { recursive: true });
 
@@ -341,7 +347,7 @@ export async function installSkills({ target, adapterId }) {
 
     for (const entry of readdirSync(BUNDLED_SKILLS_DIR, { withFileTypes: true })) {
 
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || isReservedBundledSkillName(entry.name)) continue;
 
       const skillSrc = join(BUNDLED_SKILLS_DIR, entry.name, "SKILL.md");
 
