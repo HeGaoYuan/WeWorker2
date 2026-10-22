@@ -171,7 +171,7 @@ npm run build:mac
 
 ## 版本
 
-当前版本为 `1.1.0`。公开版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本为 `1.0.0`。公开版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ```bash
 git tag v1.0.0
