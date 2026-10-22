@@ -104,7 +104,7 @@ export async function adapterHelpJson() {
 
 /**
  * adapter <id> -help 的结构化数据（-f json）。
- * 返回 site 层：工具列表（含参数）。
+ * 返回 site 层：工具摘要；具体参数在命令级帮助展示。
  */
 export async function adapterSiteHelpJson(adapterId) {
   const adapters = await loadAdapterViews();
@@ -119,7 +119,6 @@ export async function adapterSiteHelpJson(adapterId) {
     directCapable: tool.directCapable === true,
     executionMode: tool.executionMode,
     execution: tool.execution ? { type: tool.execution.type, runtime: tool.execution.runtime } : undefined,
-    parameters: normalizeToolParamsForDisplay(tool),
   }));
   return {
     site: adapterId,
@@ -128,12 +127,20 @@ export async function adapterSiteHelpJson(adapterId) {
     tool_count: tools.length,
     tools,
     next: [
-      `webcli call <tool> --key=value ...`,
+      `webcli ${adapterId} <command> --help`,
     ],
   };
 }
 
 export async function runAdapterCli(args, { outputFormat } = {}) {
+  const managerCommands = new Set(['install', 'list', 'remove', 'uninstall', 'refresh', 'info', 'skill', 'knowledge', 'skills-path', 'help', 'status', 'validate', 'eject', 'develop', 'use', 'convention-audit']);
+  if (args[0] && !args[0].startsWith('-') && !managerCommands.has(args[0]) && args[1] && !args[1].startsWith('-')
+      && args.slice(2).some(arg => ['-h', '--help', '-help'].includes(arg))) {
+    const { runAdapterHelp } = await import('./progressive-help.js');
+    const helpFormat = outputFormat ?? (args.includes('--json') || (args.includes('-f') && args[args.indexOf('-f') + 1] === 'json') ? 'json' : undefined);
+    console.log(await runAdapterHelp([args[0], args[1], 'help'], { outputFormat: helpFormat }));
+    return;
+  }
   if (args[0] === 'convention-audit') {
     const { runConventionAudit } = await import('./adapter-conventions.js');
     return runConventionAudit(args.slice(1), { outputFormat });
@@ -207,7 +214,7 @@ export async function runAdapterCli(args, { outputFormat } = {}) {
     case "--help":
     case "-h":
       // webcli adapter -help：显示 adapter 管理帮助（支持 -f json）
-      if (args.includes("-f") && args[args.indexOf("-f") + 1] === "json") {
+      if (args.includes("--json") || (args.includes("-f") && args[args.indexOf("-f") + 1] === "json")) {
         const data = await adapterHelpJson();
         console.log(JSON.stringify(data, null, 2));
       } else {
@@ -223,11 +230,12 @@ export async function runAdapterCli(args, { outputFormat } = {}) {
         const idArg = args.find((a) => !a.startsWith("-"));
         const isIdHelp = isHelpFlag(args[1]) || (args.length === 1 && !isHelpFlag(subcommand));
         if (idArg && isIdHelp) {
-          if (args.includes("-f") && args[args.indexOf("-f") + 1] === "json") {
+          if (args.includes("--json") || (args.includes("-f") && args[args.indexOf("-f") + 1] === "json")) {
             const data = await adapterSiteHelpJson(idArg);
             console.log(JSON.stringify(data, null, 2));
           } else {
-            await cmdInfo([idArg]);
+            const { runAdapterHelp } = await import('./progressive-help.js');
+            console.log(await runAdapterHelp([idArg, 'help']));
           }
           break;
         }

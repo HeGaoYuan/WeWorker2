@@ -57,6 +57,7 @@ export function toAdapterHelpModel(adapter, source = "v1-extension") {
       commands: (adapter.tools || m.tools || []).map((t) => ({
         id: t.id,
         name: t.name,
+        aliases: t.aliases || [],
         description: t.description || "",
         safety: t.safety || "read",
         runtime: "toolkit",
@@ -77,6 +78,7 @@ export function toAdapterHelpModel(adapter, source = "v1-extension") {
       commands: adapter.tools.map((t) => ({
         id: String(t.name || "").startsWith(`${adapter.id}.`) ? t.name.slice(adapter.id.length + 1) : t.name,
         name: t.name,
+        aliases: t.aliases || [],
         description: t.description || "",
         safety: t.safety || "read",
         runtime: "extension",
@@ -121,43 +123,36 @@ export function renderGlobalHelp(models) {
   return lines.join("\n");
 }
 
-/** 第二级：单个 adapter */
-export function renderAdapterHelp(model) {
-  const lines = [`Adapter: ${model.id}`];
-  if (model.display && model.display !== model.id) lines.push(`Name: ${model.display}`);
-  if (model.version) lines.push(`Version: ${model.version}`);
-  const runtimes = model.runtimes.map((r) => RUNTIME_LABEL[r] || r).join("+");
-  lines.push(`Runtime: ${runtimes}`);
-  if (model.match?.length) lines.push(`Match: ${model.match.join(", ")}`);
-  if (model.description) lines.push("", model.description);
-  lines.push("", `Commands (${model.commands.length}):`);
-  for (const c of model.commands) {
-    lines.push(`  ${c.id} — ${c.description || "(no description)"}`);
-  }
-  lines.push("", `Usage: webcli ${model.id} <command> [--key=value ...]`);
-  return lines.join("\n");
+/** Site help lists commands; parameter details belong to command help. */
+function summary(text) {
+  return String(text || '').split(/\r?\n|[。；]|\.\s/)[0].trim().slice(0, 100);
 }
 
-/** 第三级：单个命令（argument=必填，option=可选） */
+export function renderAdapterHelp(model) {
+  const lines = [`Usage: webcli ${model.id} <command> [options]`, '', summary(model.description) || model.display || model.id, '', 'Commands:'];
+  const width = Math.max(0, ...model.commands.map(c => c.id.length));
+  for (const c of model.commands) lines.push(`  ${c.id.padEnd(width)}  ${summary(c.description)}`.trimEnd());
+  lines.push('', 'Options:', '  -h, --help  Show help', '', `Run "webcli ${model.id} <command> --help" for command options.`);
+  return lines.join('\n');
+}
+
+/** All business inputs are named options, including required inputs. */
 export function renderCommandHelp(adapterModel, command) {
-  const lines = [`Command: ${command.name}`, `Adapter: ${adapterModel.id}`, `Runtime: ${RUNTIME_LABEL[command.runtime] || command.runtime}`];
+  const lines = [`Usage: webcli ${adapterModel.id} ${command.id} [options]`, '', command.description || command.name, '', 'Options:'];
+  const params = sortParams(command.params || []);
+  const labels = params.map(p => `--${p.name}=<${p.type}>`);
+  const width = Math.max(10, ...labels.map(label => label.length));
+  params.forEach((p, i) => {
+    const details = [p.description, p.required ? '(required)' : '', p.enum?.length ? `enum=${p.enum.join('|')}` : '', p.default !== undefined ? `[default=${JSON.stringify(p.default)}]` : ''].filter(Boolean).join(' ');
+    lines.push(`  ${labels[i].padEnd(width)}  ${details}`.trimEnd());
+  });
+  lines.push(`  ${'-h, --help'.padEnd(width)}  Show help`);
+  if (command.safety && command.safety !== 'read') lines.push('', `Safety: ${command.safety}`);
+  if (command.requires_confirmation !== undefined) lines.push(`Confirmation: ${command.requires_confirmation ? 'required' : 'not required'}`);
+  lines.push(`Runtime: ${RUNTIME_LABEL[command.runtime] || command.runtime}`);
   if (command.execution?.runtime === 'background') lines.push('Execution: background API');
-  if (command.description) lines.push("", command.description);
-  if (command.safety && command.safety !== "read") lines.push("", `Safety: ${command.safety}`);
-  if (command.requires_confirmation !== undefined) lines.push(`Confirmation: ${command.requires_confirmation ? "required" : "not required"}`);
-  const required = sortParams(command.params).filter((p) => p.required);
-  const optional = sortParams(command.params).filter((p) => !p.required);
-  lines.push("", `Arguments (required):`);
-  if (!required.length) lines.push("  (none)");
-  for (const p of required) lines.push(`  --${p.name}=<${p.type}>${p.enum?.length ? ` enum=${p.enum.join("|")}` : ""}${p.description ? ` — ${p.description}` : ""}`);
-  lines.push("", `Options:`);
-  if (!optional.length) lines.push("  (none)");
-  for (const p of optional) {
-    const def = p.default !== undefined ? ` [default=${JSON.stringify(p.default)}]` : "";
-    lines.push(`  --${p.name}=<${p.type}>${p.enum?.length ? ` enum=${p.enum.join("|")}` : ""}${def}${p.description ? ` — ${p.description}` : ""}`);
-  }
-  lines.push("", `Usage: webcli call ${command.name} --key=value`);
-  return lines.join("\n");
+  lines.push('', 'Examples:', `  webcli call ${command.name}${params.filter(p => p.required).map(p => ` --${p.name}=<${p.type}>`).join('')}`);
+  return lines.join('\n');
 }
 
 /** 模糊候选（不得自动执行，仅提示） */
@@ -175,7 +170,7 @@ export async function runAdapterHelp(args, { outputFormat } = {}) {
   const adapter = models.find((model) => model.id === args[0])
     || models.find((model) => model.commands.some((command) => command.aliases?.includes(args[0])));
   if (!adapter) throw new Error('Adapter unavailable: ' + args[0]);
-  if (args.length === 2) return outputFormat !== undefined ? formatCallOutput(adapter, outputFormat) : renderAdapterHelp(adapter);
+  if (args.length === 2) return outputFormat !== undefined ? formatCallOutput({ ...adapter, commands: adapter.commands.map(({ params, ...command }) => command) }, outputFormat) : renderAdapterHelp(adapter);
   const command = adapter.commands.find((entry) => entry.id === args[1] || entry.name === args[1]
     || entry.aliases?.includes(args[1]) || entry.aliases?.includes(adapter.id + '.' + args[1]));
   if (!command) throw new Error('Adapter command unavailable: ' + args[1]);
