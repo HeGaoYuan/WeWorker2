@@ -24,6 +24,25 @@ import { validatePageWrite } from './exploration-extension-write.js';
 
 
 const RUNTIMES = ["extension", "wewright", "http"];
+export const ADAPTER_ICON_FILES = Object.freeze(['icon.svg', 'icon.png']);
+
+export function validateAdapterIcon(name, bytes) {
+  if (!ADAPTER_ICON_FILES.includes(name) || !bytes.length || bytes.length > 512 * 1024) {
+    throw new Error('Adapter icon must be icon.svg or icon.png (512 KiB max).');
+  }
+  if (name === 'icon.png') {
+    if (bytes.length < 24 || Buffer.from(bytes).subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+      throw new Error('Adapter icon.png must contain PNG data.');
+    }
+    return 'image/png';
+  }
+  const svg = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  if (!/^\s*(?:<\?xml[^>]*>\s*)?<svg\s/i.test(svg)
+    || /<\s*(?:script|foreignObject|iframe|object|embed)\b|<!|\bon\w+\s*=|\bhref\s*=|\burl\s*\(|@import/i.test(svg)) {
+    throw new Error('Adapter icon.svg must be a self-contained SVG image without active or external content.');
+  }
+  return 'image/svg+xml';
+}
 const COMMAND_ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const FORBIDDEN_MANIFEST_FIELDS = [
   "adapter_type",
@@ -423,11 +442,17 @@ export function validateV2AdapterDir(adapterRoot) {
     catch (error) { fail(name, error.message); }
   }
 
-  // 封闭集合：根级仅 manifest.json、可选 guidance.md 与存在命令的 runtime 目录。
+  // Root metadata, optional icons, and declared runtime directories only.
   const topEntries = readdirSync(adapterRoot, { withFileTypes: true }).map((e) => e.name);
   const runtimesWithCommands = new Set(commands.map((c) => c.runtime));
   for (const entry of topEntries) {
     if (entry === "manifest.json" || entry === "guidance.md") continue;
+    if (ADAPTER_ICON_FILES.includes(entry)) {
+      const file = join(adapterRoot, entry);
+      if (!isRegularFile(file)) fail(name, `${entry} must be a regular file.`);
+      validateAdapterIcon(entry, readFileSync(file));
+      continue;
+    }
     if (!runtimesWithCommands.has(entry)) {
       fail(name, `unexpected root entry "${entry}" (runtime dir without commands or unknown file).`);
     }

@@ -4,6 +4,7 @@ import { resolveAdapterPaths } from './paths.js';
 import { readAdapterState } from './adapter-state.js';
 import { adapterError, assertManagedDirectory, assertManagedFile, assertPackagePath, readPackageDirectory } from './adapter-package-files.js';
 import { adapterPagePatterns } from './host-scope.js';
+import { ADAPTER_ICON_FILES, validateAdapterIcon } from './adapter-package-validation.js';
 
 export function assertAdapterIdentity(name) {
   assertPackagePath(name);
@@ -97,6 +98,8 @@ export function buildAdapterCatalog(options = {}) {
         throw adapterError('BUILTIN_ADAPTER_CONTENT_CHANGED', 'Built-in Adapter content does not match its profile.');
       }
       const permissions = adapterPermissions(pkg.manifest);
+      const iconFile = ADAPTER_ICON_FILES.find(file => pkg.files.has(file));
+      const iconBytes = iconFile && pkg.files.get(iconFile);
       if (source === 'development' && permissions.some((permission) => !record.grants?.includes(permission))) {
         throw adapterError('ADAPTER_PERMISSION_CHANGE', 'Development Adapter requires additional permissions.');
       }
@@ -104,6 +107,7 @@ export function buildAdapterCatalog(options = {}) {
         name, version: pkg.manifest.version, root: resolve(root), source,
         digest: pkg.digest, manifest: pkg.manifest, commands: pkg.commands,
         guidance: pkg.files.get('guidance.md')?.toString('utf8') || '',
+        iconUrl: iconBytes ? `data:${validateAdapterIcon(iconFile, iconBytes)};base64,${iconBytes.toString('base64')}` : undefined,
         permissions, origin: record?.origin || null,
       });
     } catch (error) {

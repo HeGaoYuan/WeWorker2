@@ -1397,6 +1397,7 @@ app.get('/sites', (_req, res) => {
     id: a.id,
     name: a.name,
     icon: a.icon,
+    iconUrl: a.iconUrl,
     promptVarDisplay: a.promptVarDisplay,
     description: a.description,
     detailDescription: a.detailDescription,

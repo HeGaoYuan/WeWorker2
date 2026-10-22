@@ -45,6 +45,7 @@ export function describeDesktopAdapters(options = {}) {
     const candidate = active || catalog.candidates.find((entry) => entry.name === name && entry.source === source);
     return {
       ...(candidate?.manifest || {}), id: name, name,
+      iconUrl: candidate?.iconUrl,
       commands: active?.commands || [],
       managed: { enabled: !!active, profile: catalog.profile, source: candidate?.source || source || null,
         digest: candidate?.digest || null, version: candidate?.version || null,

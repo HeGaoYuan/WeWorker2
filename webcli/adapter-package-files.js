@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { validateAgentGuidance, validateV2Manifest } from './adapter-package-validation.js';
+import { ADAPTER_ICON_FILES, validateAdapterIcon, validateAgentGuidance, validateV2Manifest } from './adapter-package-validation.js';
 import { assertUiWriteModule } from './exploration-ui-write.js';
 import { assertPageWriteModule } from './exploration-extension-write.js';
 
@@ -83,6 +83,11 @@ export function validatePackageFiles(input) {
   for (const command of commands) if (!files.has(command)) throw adapterError('INVALID_PACKAGE', 'Adapter command module is missing.');
   for (const name of files.keys()) {
     if (name === 'manifest.json' || name === 'guidance.md') continue;
+    if (ADAPTER_ICON_FILES.includes(name)) {
+      try { validateAdapterIcon(name, files.get(name)); }
+      catch (error) { throw adapterError('INVALID_PACKAGE', error.message); }
+      continue;
+    }
     const [runtime, folder, ...rest] = name.split('/');
     if (!runtimes.has(runtime) || !['commands', 'internal'].includes(folder) || !rest.length
       || (folder === 'commands' && !commands.has(name))

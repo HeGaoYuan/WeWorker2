@@ -52,6 +52,29 @@ beforeEach(() => {
 afterEach(() => { clearAdapterCache(); vi.unstubAllEnvs(); fs.rmSync(root, { recursive: true, force: true }) })
 
 describe('desktop Adapter catalog and Skill continuity', () => {
+  it('uses the selected package icon through updates, disable and removal', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" fill="#2563eb"/></svg>'
+    const pkg = files()
+    const manifest = JSON.parse(pkg.get('manifest.json')!)
+    manifest.iconUrl = 'https://example.com/untrusted.png'
+    pkg.set('manifest.json', JSON.stringify(manifest))
+    pkg.set('icon.svg', svg)
+    installAdapter({ files: pkg, origin: { kind: 'local' } })
+    const expected = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+    expect(parseAllAdapters().get('demo')?.iconUrl).toBe(expected)
+    toggleDesktopAdapter('demo')
+    expect(parseAllAdapters().get('demo')?.iconUrl).toBe(expected)
+    toggleDesktopAdapter('demo')
+    const updated = files('1.1.0')
+    updated.set('icon.svg', svg.replace('#2563eb', '#0f766e'))
+    installAdapter({ files: updated, origin: { kind: 'local' } })
+    expect(parseAllAdapters().get('demo')?.iconUrl).not.toBe(expected)
+    installAdapter({ files: files('1.2.0'), origin: { kind: 'local' } })
+    expect(parseAllAdapters().get('demo')?.iconUrl).toBeUndefined()
+    removeInstalledAdapter('demo')
+    expect(parseAllAdapters().get('demo')?.iconUrl).toBeUndefined()
+  })
+
   it('applies default-site priority after merging managed and legacy adapters', () => {
     // Managed inventory sorts these alphabetically; presentation must follow the JSON.
     for (const name of ['first.example.com', 'second.example.com', 'extra.example.com']) {

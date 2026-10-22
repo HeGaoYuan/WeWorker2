@@ -1,5 +1,7 @@
 # Official website icon sources
 
+Icons are maintained at `adapters/<website>/icon.png` or `icon.svg`. This file records provenance only; it is not a build input. The desktop packages each icon with its Adapter and reads the currently selected package at runtime. Variant repositories own their corresponding Adapter icons.
+
 Audited all 33 bundled website icons on 2026-10-20. Assets come from official websites, official static hosts, or the corresponding publisher's Apple App Store listing. Bundled locally for offline display; trademarks remain the property of their owners.
 
 Raster replacements retain native resolution and colors (format conversion to PNG only), except the documented 12306 symbol crop. No small bitmap was enlarged. Three official SVG sources are rendered to 256 px PNGs for the existing asset pipeline; Hacker News remains SVG. Previously adequate raster assets are retained, including earlier conversions capped at 128 px. At 34 CSS px / 2x density every bitmap has sufficient source pixels; the automated guard allows up to 40 CSS px / 2x density. Dimensions alone do not prove clarity, so all icons are also visually reviewed at actual display size.

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { resolveSiteIcon } from '../../utils/site-icon-resolve.js'
-import { SITE_ICON_ASSETS } from '../../utils/site-icon-assets.js'
+import { getSiteIconColor, getSiteIconInitials, shouldGenerateSiteIcon } from '../../utils/site-icon-generated.js'
 
 /** Minimal silhouette SVGs — single color via currentColor */
 const ICONS = {
@@ -104,13 +104,36 @@ const COLOR_META = {
 }
 
 /**
- * @param {{ icon?: string } | null} [site] — uses `site.icon` from GET /sites (manifest.json)
+ * @param {{ icon?: string, iconUrl?: string } | null} [site] — metadata from GET /sites
  * @param {number} [size]
  */
 export default function SiteIcon({ site, size = 20, className, style }) {
   const resolved = resolveSiteIcon(site)
-  const source = SITE_ICON_ASSETS[site?.id]
+  const source = site?.iconUrl
   const [failedSource, setFailedSource] = useState(null)
+
+  if (shouldGenerateSiteIcon(site, source && failedSource !== source, resolved)) {
+    return (
+      <span
+        className={className}
+        aria-hidden
+        style={{
+          ...wrapStyle(size, style),
+          color: '#fff',
+          background: getSiteIconColor(site),
+          borderRadius: Math.max(5, Math.round(size * 0.24)),
+          fontSize: Math.max(9, Math.round(size * 0.42)),
+          fontWeight: 700,
+          letterSpacing: 0,
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.28)',
+        }}
+      >
+        {getSiteIconInitials(site)}
+      </span>
+    )
+  }
 
   if (source && failedSource !== source) {
     return (

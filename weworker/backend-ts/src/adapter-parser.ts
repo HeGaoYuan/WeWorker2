@@ -78,6 +78,7 @@ export interface ParsedAdapter {
   detailDescription: string
   registryScenarios: RegistryScenarioDef[]
   icon: string
+  iconUrl?: string
   promptVarDisplay: PromptVarDisplayMap
   routeTemplates?: ManifestRouteTemplateDef[]
 }
@@ -483,6 +484,7 @@ export function parseAllAdapters(): Map<string, ParsedAdapter> {
       registryScenarios: (manifest.scenarios || []) as RegistryScenarioDef[],
       routeTemplates: (manifest.route_templates || []) as ManifestRouteTemplateDef[],
       icon: manifest.icon || 'globe', promptVarDisplay: mergePromptVarDisplay({}, manifest.prompt_var_display),
+      iconUrl: manifest.iconUrl,
     })
   }
   const ordered = new Map<string, ParsedAdapter>()

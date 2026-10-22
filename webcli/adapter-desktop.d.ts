@@ -12,6 +12,7 @@ export interface DesktopAdapter {
   gate_aliases?: string[]
   hidden?: boolean
   icon?: string
+  iconUrl?: string
   test_prompts?: string[]
   scenarios?: unknown[]
   route_templates?: unknown[]

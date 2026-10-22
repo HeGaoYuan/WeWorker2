@@ -1,5 +1,7 @@
 # Adapter 统一架构与迁移计划
 
+Adapter 根目录可维护 `icon.svg` 或 `icon.png`，图标随包校验、摘要、安装和构建分发；桌面端从选中的包读取，不维护全局站点图片映射。格式及开源／闭源覆盖约定见 [Adapter 图标](adapter_icons.md)。
+
 状态：公共架构、v2 内置资产及历史命令兼容已交付实现；真实浏览器重定向、Toolkit 公共最小链路和 Windows 打包已验证。最新验收证据、同事接手方式及剩余人工事项以 `docs/adapter_migration_acceptance.md` 为准；后文保留各历史批次记录，不代表当前仍有同样阻塞。安装/升级、macOS 和真实页面完整生成验收尚未关闭。
 
 ## Toolkit 职责与交接边界（2026-09-22）
