@@ -1301,7 +1301,7 @@ async function main() {
 
   // --help / -h / -help / no command
   if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "-help") {
-    const jsonMode = args.includes("-f") && args[args.indexOf("-f") + 1] === "json";
+    const jsonMode = args.includes("--json") || (args.includes("-f") && args[args.indexOf("-f") + 1] === "json");
     await printGlobalHelp({ json: jsonMode, outputFormat });
     return;
   }
@@ -1386,6 +1386,13 @@ async function main() {
 
   // call <tool_name> [--key=value ...] [--args '{}']
   if (cmd === "call") {
+    if (args.slice(2).some(arg => ['-h', '--help', '-help'].includes(arg))) {
+      const split = (args[1] || '').lastIndexOf('.');
+      if (split < 1) throw new Error('Use webcli call <adapter>.<command> --help');
+      await runProgressiveHelp([args[1].slice(0, split), args[1].slice(split + 1), 'help'], outputFormat ?? (args.includes('--json') || (args.includes('-f') && args[args.indexOf('-f') + 1] === 'json') ? 'json' : undefined));
+      return;
+    }
+
     const { toolName, argsJson, flagArgs } = resolveCliInvocation(args);
     if (!toolName) {
       console.error("Error: 请指定工具名称");
@@ -1481,9 +1488,11 @@ async function main() {
   //   避免其被当作无参工具调用）
   const SITE_HELP_FLAGS = new Set(["-help", "--help", "-h"]);
   if (!BUILTIN_COMMANDS.has(cmd) && args.slice(1).some((a) => SITE_HELP_FLAGS.has(a))) {
-    const jsonMode = args.includes("-f") && args[args.indexOf("-f") + 1] === "json";
+    const jsonMode = args.includes("--json") || (args.includes("-f") && args[args.indexOf("-f") + 1] === "json");
     const { runAdapterCli } = await import("./adapter-cli.js");
-    await runAdapterCli([cmd, "-help", ...(jsonMode ? ["-f", "json"] : [])], { outputFormat });
+    const command = args[1] && !args[1].startsWith('-') ? args[1] : null;
+    if (command) await runProgressiveHelp([cmd, command, 'help'], outputFormat ?? (jsonMode || args.includes('--json') ? 'json' : undefined));
+    else await runAdapterCli([cmd, "-help", ...(jsonMode ? ["-f", "json"] : [])], { outputFormat });
     return;
   }
 
