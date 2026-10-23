@@ -151,7 +151,10 @@ export function getRouteEngine(deps: RouteEngineDeps = {}): RouteEngine {
       template: templateMatcher,
       pattern: (message) => {
         const hit = patternMatcher(message)
-        return hit ? { tool: hit.tool, args: hit.args, confidence: hit.confidence } : null
+        // Keep the pattern-level render declaration when adapting the matcher result to the
+        // cascade interface. Dropping it here silently falls back to generic rendering even
+        // though both the config loader and the matcher preserved the schema reference.
+        return hit ? { tool: hit.tool, args: hit.args, confidence: hit.confidence, render: hit.render } : null
       },
       plan: (message) => {
         const hit = planMatcher.match(message)

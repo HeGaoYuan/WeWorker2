@@ -201,6 +201,11 @@ export function buildPatternMatcher(
         if (confidence > best) {
           best = confidence
           bestDefaultArgs = pattern.default_args
+        } else if (confidence === best && pattern.default_args) {
+          // Several equally confident rules can describe independent refinements of the same
+          // intent. Merge only defaults that were explicitly declared; a later broad rule with
+          // no defaults must not erase values supplied by an equally weighted specific rule.
+          bestDefaultArgs = { ...(bestDefaultArgs ?? {}), ...pattern.default_args }
         }
       }
       if (!matchedPatterns.length) continue

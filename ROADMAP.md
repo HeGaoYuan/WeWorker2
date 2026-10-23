@@ -1,5 +1,7 @@
 # WeWorker Roadmap
 
+- 2026-10-23：修复 Pattern 路由从匹配器接入级联规划时丢失 `render.schemaId` 的问题；同最高权重规则同时命中时合并其显式默认参数，未声明默认值的规则不会清空已有值。以端到端配置层测试覆盖完整调用链。验证：聚焦配置层测试与 Backend TypeScript 检查通过；完整内部三平台打包待合入后复验。
+
 - 2026-10-23（新建定时任务默认启用）：侧栏新建任务与 Backend 创建接口的默认状态统一改为启用，创建后注册调度；显式停用与已有任务状态保持不变。验证：Backend 定时任务与调度器 32 项、Renderer 5 项回归测试、Backend 类型检查、Renderer 生产构建及 JS 语法检查通过。未验证：完整 Electron 交互与安装包。
 
 - 2026-10-23：补齐 Tier -1 Pattern 路由的声明式渲染传递：`patterns.json` 可声明与 route／alias／shortcut 相同的 `render`，匹配结果和 Cascade 决策会继续携带 schemaId，配置校验与随包 schema 引用检查同步覆盖。验证：新增 Pattern matcher 与 Cascade 聚焦回归 3 项、Backend TypeScript 检查通过；完整内部三平台打包待公共修复合入后复验。

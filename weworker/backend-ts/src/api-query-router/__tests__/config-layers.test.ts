@@ -180,6 +180,19 @@ describe('Tier -1 提示词层', () => {
     expect(matcher('看发票')?.args).toEqual({ limit: 10 })
   })
 
+  it('同权重规则同时命中时合并显式默认参数，未声明默认值的规则不清空已有值', () => {
+    const matcher = buildPatternMatcher(
+      config({
+        patterns: [
+          { type: 'keyword', keywords: ['会议室'], weight: 1 },
+          { type: 'keyword', keywords: ['空闲会议室'], weight: 1, default_args: { limit: 999 } },
+          { type: 'keyword', keywords: ['查询'], weight: 1 },
+        ],
+      }),
+    )
+    expect(matcher('查询空闲会议室')?.args).toEqual({ limit: 999 })
+  })
+
   it('抽参失败不产出该参数（不猜），非法正则只丢自己', () => {
     const matcher = buildPatternMatcher(
       config({
@@ -444,8 +457,8 @@ describe('端到端：改配置文件后无需重启即生效', () => {
     expect(ask(`短路触发词 ${adapter}`).plan.steps).toEqual([])
   })
 
-  it('渲染声明（schemaId）必须一路带到规划结果：层 P / 别名 / 短路', () => {
-    // 三层都能在配置里写 render；写进去不等于生效——历史上两次缺陷都是「配置解析对了、
+  it('渲染声明（schemaId）必须一路带到规划结果：层 P / Pattern / 别名 / 短路', () => {
+    // 四层都能在配置里写 render；写进去不等于生效——历史缺陷都是「配置解析对了、
     // 校验通过了，但构造决策时把 render 丢了」，表现只是「命中了却渲染成通用表格」，无日志。
     const render = { type: 'schema', schemaId: 'test-schema' }
     const alias = { id: 'a', tool: routableTool, alias: '!别名渲染', render, examples: ['!别名渲染'] }
@@ -465,19 +478,33 @@ describe('端到端：改配置文件后无需重启即生效', () => {
     }
 
     write('routes.json', { routes: [{ id: 'r', tool: routableTool, match: { aliases: ['层P渲染'] }, render, examples: ['层P渲染'] }] })
+    write('patterns.json', {
+      version: '1',
+      configs: {
+        [routableTool]: { patterns: [{ type: 'keyword', keywords: ['模式渲染词'], examples: ['模式渲染词'] }], render },
+      },
+    })
     write('aliases.json', { aliases: [alias] })
     write('shortcuts.json', { shortcuts: [shortcut] })
     resetRouterConfigCacheForTests()
     expect(schemaOf('层P渲染', 'route')).toBe('test-schema')
+    expect(schemaOf('模式渲染词', 'pattern')).toBe('test-schema')
     expect(schemaOf('!别名渲染', 'alias')).toBe('test-schema')
     expect(schemaOf(`短路渲染词 ${adapter}`, 'shortcut')).toBe('test-schema')
 
     // 不声明时回到通用渲染——声明不得从别的层「漏」过来
     write('routes.json', { routes: [{ id: 'r', tool: routableTool, match: { aliases: ['层P渲染'] }, examples: ['层P渲染'] }] })
+    write('patterns.json', {
+      version: '1',
+      configs: {
+        [routableTool]: { patterns: [{ type: 'keyword', keywords: ['模式渲染词'], examples: ['模式渲染词'] }] },
+      },
+    })
     write('aliases.json', { aliases: [{ id: 'a', tool: routableTool, alias: '!别名渲染', examples: ['!别名渲染'] }] })
     write('shortcuts.json', { shortcuts: [{ ...shortcut, render: undefined }] })
     resetRouterConfigCacheForTests()
     expect(schemaOf('层P渲染', 'route')).toBeUndefined()
+    expect(schemaOf('模式渲染词', 'pattern')).toBeUndefined()
     expect(schemaOf('!别名渲染', 'alias')).toBeUndefined()
     expect(schemaOf(`短路渲染词 ${adapter}`, 'shortcut')).toBeUndefined()
 
