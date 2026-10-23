@@ -21,6 +21,7 @@ export interface ModelConfiguration extends ModelCatalogConfig {
   openai_base_url_is_full?: boolean
   openai_api_key?: string
   openai_model?: string
+  custom_models?: string[]
   auth_type: AnthropicAuthType
 }
 
@@ -171,6 +172,12 @@ export function updateModelConfiguration(settings: Settings, id: string, input: 
   const current = getModelConfiguration(settings, id)
   if (!current) throw new Error('模型配置不存在')
   const next = { ...current }
+  if (input.custom_models !== undefined) {
+    if (!Array.isArray(input.custom_models) || input.custom_models.length > 200 || input.custom_models.some(model => typeof model !== 'string' || !model.trim() || model.trim().length > 200)) {
+      throw new Error('自定义模型列表无效')
+    }
+    next.custom_models = [...new Set(input.custom_models.map(model => (model as string).trim()))]
+  }
   if (current.provider_id === 'custom') Object.assign(next, modelCatalogConfigPatch(input, current))
   if (input.name !== undefined) next.name = validateModelConfigurationName(input.name)
   if (current.provider_id === 'custom' && input.base_url_is_full !== undefined) {

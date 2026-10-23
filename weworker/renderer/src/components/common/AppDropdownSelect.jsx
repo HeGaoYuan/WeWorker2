@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
-import { CheckOutlined, DownOutlined } from '@ant-design/icons'
+import { CheckOutlined, DeleteOutlined, DownOutlined } from '@ant-design/icons'
 import { dropdownMenuItemClassName } from './dropdown-menu-styles.js'
 import { DropdownMenuPortal, useDropdownDismiss } from './DropdownMenuPortal.jsx'
 import StyleKindIcon from './StyleKindIcon.jsx'
@@ -19,6 +19,7 @@ export default function AppDropdownSelect({
   menuClassName,
   showOptionIcons = false,
   renderOptionSuffix,
+  onRemoveOption,
   fallbackOption,
   menuHeader,
   required = false,
@@ -179,37 +180,53 @@ export default function AppDropdownSelect({
             triggerRef.current?.focus()
           }
         }}>
-          {visibleOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-selected={value === option.value}
-              disabled={disabled || option.disabled}
-              onClick={() => {
-                onChange?.(option.value)
-                closeMenu()
-                triggerRef.current?.focus()
-              }}
-              className={dropdownMenuItemClassName({ selected: value === option.value, rich: Boolean(option.description) })}
-            >
-              {option.description ? (
-                <span className="app-dropdown-menu-item__content">
-                  {showOptionIcons && option.kind ? (
-                    <span className="app-dropdown-menu-item__icon" aria-hidden="true">
-                      <StyleKindIcon kind={option.kind} size={14} />
-                    </span>
-                  ) : null}
+          {visibleOptions.map((option) => {
+            const removable = option.removable === true && typeof onRemoveOption === 'function'
+            const optionButton = (
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === option.value}
+                disabled={disabled || option.disabled}
+                onClick={() => {
+                  onChange?.(option.value)
+                  closeMenu()
+                  triggerRef.current?.focus()
+                }}
+                className={dropdownMenuItemClassName({ selected: value === option.value, rich: Boolean(option.description) })}
+              >
+                {option.description ? (
+                  <span className="app-dropdown-menu-item__content">
+                    {showOptionIcons && option.kind ? (
+                      <span className="app-dropdown-menu-item__icon" aria-hidden="true">
+                        <StyleKindIcon kind={option.kind} size={14} />
+                      </span>
+                    ) : null}
+                    <span className="app-dropdown-menu-item__label">{option.label}</span>
+                    <span className="app-dropdown-menu-item__desc">{option.description}</span>
+                  </span>
+                ) : (
                   <span className="app-dropdown-menu-item__label">{option.label}</span>
-                  <span className="app-dropdown-menu-item__desc">{option.description}</span>
-                </span>
-              ) : (
-                <span className="app-dropdown-menu-item__label">{option.label}</span>
-              )}
-              {renderOptionSuffix?.(option)}
-              <DropdownMenuCheck selected={value === option.value} />
-            </button>
-          ))}
+                )}
+                {renderOptionSuffix?.(option)}
+                <DropdownMenuCheck selected={value === option.value} />
+              </button>
+            )
+            return removable ? (
+              <div key={option.value} className="app-dropdown-select__removable-option">
+                {optionButton}
+                <button
+                  type="button"
+                  className="app-dropdown-select__remove-option"
+                  aria-label={`删除自定义模型 ${option.label}`}
+                  title="删除自定义模型"
+                  onClick={() => onRemoveOption(option.value)}
+                >
+                  <DeleteOutlined aria-hidden="true" />
+                </button>
+              </div>
+            ) : React.cloneElement(optionButton, { key: option.value })
+          })}
           {customOption ? (
             <button
               type="button"

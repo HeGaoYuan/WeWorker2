@@ -16,6 +16,17 @@ function legacySettings(): Settings {
 }
 
 describe('multiple model configurations', () => {
+  it('persists a deduplicated custom model list and rejects invalid entries', () => {
+    const created = createModelConfiguration(legacySettings(), 'custom')
+    const state = { ...legacySettings(), ...created.updates }
+    const updates = updateModelConfiguration(state, created.id, { custom_models: ['my-model', ' my-model ', 'another-model'] })
+    const next = { ...state, ...updates }
+    expect(getModelConfiguration(next, created.id)?.custom_models).toEqual(['my-model', 'another-model'])
+    expect(publicModelConfigurations(next)[created.id].custom_models).toEqual(['my-model', 'another-model'])
+    expect(() => updateModelConfiguration(state, created.id, { custom_models: [''] })).toThrow('自定义模型列表无效')
+    expect(() => updateModelConfiguration(state, created.id, { custom_models: Array(201).fill('model') })).toThrow('自定义模型列表无效')
+  })
+
   it('fixes preset names and protects only fixed entries from rename and deletion', () => {
     const state = { ...legacySettings(), model_configuration_names: { anthropic: 'old name', glm: 'old name', deepseek: 'old name' } }
     const original = structuredClone(state)
