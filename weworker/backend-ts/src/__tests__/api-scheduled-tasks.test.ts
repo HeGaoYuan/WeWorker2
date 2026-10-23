@@ -8,7 +8,11 @@
  *
  * **Validates: Requirements 8.1, 8.2, 8.3, 8.4, 8.5, 8.6**
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import fs from 'node:fs'
+import vm from 'node:vm'
+import ts from 'typescript'
+import { z } from 'zod'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   _initTestDb,
   createScheduledTask,
@@ -28,6 +32,32 @@ import { Scheduler } from '../scheduler.js'
 beforeEach(() => {
   _initTestDb()
 })
+
+function createTaskEndpoint() {
+  // Exercise the real route without starting the server or using the user's database.
+  const source = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('const CreateTaskSchema =')
+  const end = source.indexOf("app.get('/scheduled-tasks/:id'", start)
+  expect(start).toBeGreaterThanOrEqual(0)
+  expect(end).toBeGreaterThan(start)
+  const res = { status: vi.fn().mockReturnThis(), json: vi.fn() }
+  let handler!: (req: { body: unknown }, response: typeof res) => void
+  const register = vi.fn()
+  const context = vm.createContext({
+    z,
+    Scheduler,
+    store: { createScheduledTask, listScheduledTasks },
+    scheduler: { register },
+    app: {
+      get: () => {},
+      post: (_route: string, callback: typeof handler) => { handler = callback },
+    },
+  })
+  vm.runInContext(ts.transpileModule(source.slice(start, end), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+  }).outputText, context)
+  return { invoke: (body: unknown) => handler({ body }, res), res, register }
+}
 
 // ── GET /scheduled-tasks — listScheduledTasks ─────────────────────────────────
 
@@ -76,6 +106,28 @@ describe('GET /scheduled-tasks', () => {
 // ── POST /scheduled-tasks — create + cron validation ──────────────────────────
 
 describe('POST /scheduled-tasks', () => {
+  it('enables new tasks by default and registers their schedule', () => {
+    const endpoint = createTaskEndpoint()
+    endpoint.invoke({ title: 'Example schedule', cron_expression: '0 * * * *' })
+
+    expect(endpoint.res.status).not.toHaveBeenCalled()
+    const task = endpoint.res.json.mock.calls[0][0]
+    expect(task.enabled).toBe(true)
+    expect(getScheduledTask(task.id)?.enabled).toBe(true)
+    expect(endpoint.register).toHaveBeenCalledWith(task.id, '0 * * * *')
+  })
+
+  it('preserves an explicitly disabled task without registering its schedule', () => {
+    const endpoint = createTaskEndpoint()
+    endpoint.invoke({ title: 'Example schedule', cron_expression: '0 * * * *', enabled: false })
+
+    expect(endpoint.res.status).not.toHaveBeenCalled()
+    const task = endpoint.res.json.mock.calls[0][0]
+    expect(task.enabled).toBe(false)
+    expect(getScheduledTask(task.id)?.enabled).toBe(false)
+    expect(endpoint.register).not.toHaveBeenCalled()
+  })
+
   it('creates a task with valid data', () => {
     const task = createScheduledTask({
       title: '每日摘要',

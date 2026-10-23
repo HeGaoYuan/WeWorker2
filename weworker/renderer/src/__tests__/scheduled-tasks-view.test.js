@@ -1,11 +1,34 @@
 import test, { afterEach } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import vm from 'node:vm'
 import { scheduledTasksPageState } from '../utils/scheduled-tasks-view.js'
 import { useScheduledTasksStore } from '../store/scheduled-tasks.js'
 
 const initialState = useScheduledTasksStore.getState()
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
+
+test('creating a task from the sidebar requests an enabled schedule', async () => {
+  const source = fs.readFileSync(new URL('../components/layout/Sidebar.jsx', import.meta.url), 'utf8')
+  const start = source.indexOf('const handleCreateTask =')
+  const end = source.indexOf('const handleCreateWork =', start)
+  assert.ok(start >= 0 && end > start)
+  let requestedTask
+  const pageStore = { getState: () => ({ closePage() {} }) }
+  const context = vm.createContext({
+    leaveWebsiteExploration: async () => true,
+    useExplorationPageStore: pageStore,
+    useToolPackagePageStore: pageStore,
+    createTask: async (task) => { requestedTask = task; return { id: 'task-example', ...task } },
+    showAlert: (message) => assert.fail(message),
+  })
+
+  await vm.runInContext(`${source.slice(start, end)}\nhandleCreateTask()`, context)
+  assert.equal(requestedTask.enabled, true)
+  assert.equal(requestedTask.cron_expression, '0 * * * *')
+})
+
 afterEach(() => {
   globalThis.fetch = originalFetch
   globalThis.window = originalWindow

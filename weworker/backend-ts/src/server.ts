@@ -2264,7 +2264,7 @@ const CreateTaskSchema = z.object({
   cron_expression: z.string().min(1),
   prompt_template: z.string().default(''),
   notify_channels: z.array(z.string()).optional().default([]),
-  enabled: z.boolean().optional().default(false),
+  enabled: z.boolean().optional().default(true),
 })
 
 const UpdateTaskSchema = z.object({
