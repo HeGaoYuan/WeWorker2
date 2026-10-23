@@ -198,7 +198,10 @@ export function buildPatternMatcher(
         const { hit, confidence, label } = patternHit(trimmed, pattern, caseSensitive)
         if (!hit) continue
         matchedPatterns.push(label)
-        if (confidence > best) {
+        // Equal-weight rules are ordered from broad to specific in the shipped configuration.
+        // Let the later matching rule provide its defaults so a specific rule can refine a
+        // broad rule without requiring an artificial confidence difference.
+        if (confidence >= best) {
           best = confidence
           bestDefaultArgs = pattern.default_args
         }

@@ -180,6 +180,18 @@ describe('Tier -1 提示词层', () => {
     expect(matcher('看发票')?.args).toEqual({ limit: 10 })
   })
 
+  it('同权重规则同时命中时，后置具体规则可覆盖宽泛规则的默认参数', () => {
+    const matcher = buildPatternMatcher(
+      config({
+        patterns: [
+          { type: 'keyword', keywords: ['会议室'], weight: 1 },
+          { type: 'keyword', keywords: ['空闲会议室'], weight: 1, default_args: { limit: 999 } },
+        ],
+      }),
+    )
+    expect(matcher('查询空闲会议室')?.args).toEqual({ limit: 999 })
+  })
+
   it('抽参失败不产出该参数（不猜），非法正则只丢自己', () => {
     const matcher = buildPatternMatcher(
       config({
