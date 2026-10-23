@@ -132,6 +132,16 @@ describe('Tier -1 提示词层', () => {
     expect(matcher('搜索发票')?.confidence).toBe(0.9)
   })
 
+  it('render 指到 schema 时随命中结果带出（供级联层传给执行期渲染器）', () => {
+    const matcher = buildPatternMatcher(
+      config({
+        patterns: [{ type: 'keyword', keywords: ['发票'] }],
+        render: { type: 'schema', schemaId: 'invoice-table' },
+      }),
+    )
+    expect(matcher('查看发票')?.render).toEqual({ type: 'schema', schemaId: 'invoice-table' })
+  })
+
   it('未过门槛（缺省 0.8）视为未命中，绝不硬派发', () => {
     const matcher = buildPatternMatcher(config({ patterns: [{ type: 'regex', expression: '搜索', weight: 0.5 }] }))
     expect(matcher('搜索发票')).toBeNull()
