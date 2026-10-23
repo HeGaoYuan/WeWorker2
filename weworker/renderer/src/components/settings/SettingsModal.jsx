@@ -1501,6 +1501,7 @@ function ModelTab() {
       base_url_is_full: stored.base_url_is_full === true,
       openai_base_url: stored.openai_base_url || '',
       openai_base_url_is_full: stored.openai_base_url_is_full === true,
+      weworker_protocol: stored.weworker_protocol === 'openai_chat_completions' ? 'openai_chat_completions' : 'anthropic_messages',
       auth_type: stored.auth_type === 'api_key' ? 'api_key' : 'auth_token',
       models_url: stored.models_url || '',
       models_url_is_full: stored.models_url_is_full ?? Boolean(stored.models_url),
@@ -1532,7 +1533,7 @@ function ModelTab() {
     })
     setProbeExpanded((expanded) => ({ ...expanded, [pid]: false }))
     setProbeLogsVisible((visible) => ({ ...visible, [pid]: false }))
-    if (['api_key', 'openai_api_key', 'base_url', 'base_url_is_full', 'openai_base_url', 'openai_base_url_is_full', 'auth_type', 'models_url', 'models_url_is_full', 'models_auth_type', 'openai_models_url', 'openai_models_url_is_full'].includes(k)) {
+    if (['api_key', 'openai_api_key', 'base_url', 'base_url_is_full', 'openai_base_url', 'openai_base_url_is_full', 'auth_type', 'weworker_protocol', 'models_url', 'models_url_is_full', 'models_auth_type', 'openai_models_url', 'openai_models_url_is_full'].includes(k)) {
       const key = catalogKey(pid, k.startsWith('openai_') ? 'webwright' : 'weworker')
       catalogRequestIds.current[key] = (catalogRequestIds.current[key] || 0) + 1
       setCatalogLoading((current) => ({ ...current, [key]: false }))
@@ -1552,7 +1553,7 @@ function ModelTab() {
       openai_api_key: f.openai_api_key,
       model: f.model,
       openai_model: f.openai_model,
-      ...(providerType(pid) === 'custom' ? { base_url: f.base_url, base_url_is_full: f.base_url_is_full, openai_base_url: f.openai_base_url, openai_base_url_is_full: f.openai_base_url_is_full, auth_type: f.auth_type } : {}),
+      ...(providerType(pid) === 'custom' ? { base_url: f.base_url, base_url_is_full: f.base_url_is_full, weworker_protocol: f.weworker_protocol, openai_base_url: f.openai_base_url, openai_base_url_is_full: f.openai_base_url_is_full, auth_type: f.auth_type } : {}),
     }
   }
 
@@ -1632,6 +1633,7 @@ function ModelTab() {
     if (providerType(pid) === 'custom') {
       updates.base_url = f.base_url
       updates.base_url_is_full = f.base_url_is_full
+      updates.weworker_protocol = f.weworker_protocol
       updates.openai_base_url = f.openai_base_url
       updates.openai_base_url_is_full = f.openai_base_url_is_full
       updates.auth_type = f.auth_type
@@ -1781,7 +1783,7 @@ function ModelTab() {
       const provider = providerDefinition(pid)
       const probe = async (target) => {
         const fallbackProtocol = target === 'weworker'
-          ? 'anthropic_messages'
+          ? getForm(pid).weworker_protocol || 'anthropic_messages'
           : provider?.webwright?.protocol || (providerType(pid) === 'anthropic' ? 'anthropic_messages' : 'openai_chat_completions')
         try {
           const res = await backendFetch(`${API}/settings/provider/probe`, {
@@ -1805,7 +1807,9 @@ function ModelTab() {
       const targets = buildProviderProbeTargets(providerType(pid), getForm(pid).openai_base_url)
       const checks = targets.map((target) => ({
         target,
-        label: target === 'weworker' ? 'WeWorker 对话接口（Claude Code 接口）' : '网站探索agent 接口（OpenAI 接口）',
+        label: target === 'weworker'
+          ? `WeWorker 对话接口（${getForm(pid).weworker_protocol === 'openai_chat_completions' ? 'OpenAI Chat Completions' : 'Anthropic Messages'}）`
+          : '网站探索agent 接口（OpenAI 接口）',
         status: 'running',
         message: '',
       }))
@@ -1990,7 +1994,7 @@ function ModelTab() {
           const openAiCatalogStatus = getModelCatalogStatus(openAiCatalog, loadingOpenAiModels, openAiCatalogIssue)
           const remoteModels = !catalogIssue && catalog?.source === 'remote' ? catalog.models : []
           const modelOptions = buildModelOptions(remoteModels, f.model, { customModels: f.custom_models })
-            .map(option => ({ ...option, removable: option.custom === true }))
+            .map(option => ({ ...option, removable: option.custom }))
           const handleModelChange = (value) => {
             const custom_models = remoteModels.some(model => String(model).trim() === value)
               ? f.custom_models
@@ -2048,21 +2052,23 @@ function ModelTab() {
             const target = openai ? 'webwright' : 'weworker'
             const key = catalogKey(p.id, target)
             const expanded = catalogAddressExpanded[key] ?? Boolean(f[field])
+            const openAiCatalog = openai || (!openai && f.weworker_protocol === 'openai_chat_completions')
+            const catalogProtocolName = openAiCatalog ? 'OpenAI' : 'Anthropic'
             return (
               <details className="settings-catalog-address" open={expanded}
                 onToggle={(event) => { const open = event.currentTarget.open; if (open !== expanded) setCatalogAddressExpanded(current => ({ ...current, [key]: open })) }}>
                 <summary>单独设置模型列表地址（可选）</summary>
-                <Field label="模型列表地址" hint={f[mode] ? '原样使用完整 URL；留空自动推导' : '默认补全 /v1/models，已有后缀不重复追加；留空自动推导'}>
+                <Field label={`${catalogProtocolName} 模型列表地址`} hint={f[mode] ? '原样使用完整 URL；留空自动推导' : `默认补全 ${openAiCatalog ? '/models' : '/v1/models'}，已有后缀不重复追加；留空自动推导`}>
                   <label className="settings-url-mode">
-                    <AppSwitch aria-label={openai ? 'OpenAI 模型列表使用完整 URL' : 'Claude Code 模型列表使用完整 URL'}
+                    <AppSwitch aria-label={`${catalogProtocolName} 模型列表使用完整 URL`}
                       checked={f[mode]} onChange={(e) => setFormField(p.id, mode, e.target.checked)} />
                     使用完整 URL
                   </label>
                   <input className="settings-input" aria-label={openai ? 'OpenAI 模型列表地址' : 'Claude Code 模型列表地址'}
                     value={f[field]} onChange={(e) => { setCatalogAddressExpanded(current => ({ ...current, [key]: true })); setFormField(p.id, field, e.target.value) }}
-                    onBlur={() => { void loadModels(p.id, false, target) }} placeholder={f[mode] ? 'https://example.com/v1/models' : 'https://example.com/v1'} />
+                    onBlur={() => { void loadModels(p.id, false, target) }} placeholder={f[mode] ? 'https://example.com/v1/models' : `https://example.com/${openAiCatalog ? 'v1' : 'anthropic'}`} />
                 </Field>
-                {!openai && <Field label="列表认证方式" hint="使用本接口 API Key">
+                {!openai && f.weworker_protocol !== 'openai_chat_completions' && <Field label="列表认证方式" hint="使用本接口 API Key">
                   <AppDropdownSelect value={f.models_auth_type} ariaLabel="模型列表认证方式"
                     options={[{ value: 'inherit', label: '跟随对话接口' }, { value: 'auth_token', label: 'Bearer Token' }, { value: 'api_key', label: 'API Key（x-api-key）' }]}
                     onChange={(value) => setFormField(p.id, 'models_auth_type', value)} matchAnchorWidth />
@@ -2169,22 +2175,40 @@ function ModelTab() {
                   </div>}
 
                   {templateId === 'custom' && (
-                    <section className="settings-interface-section" aria-label="Claude Code 接口（WeWorker 对话）">
-                      <div className="settings-interface-section__title">Claude Code 接口（WeWorker 对话）</div>
+                    <section className="settings-interface-section" aria-label="WeWorker 对话接口">
+                      <div className="settings-interface-section__title">WeWorker 对话接口</div>
                       <div className="model-settings-grid">
-                      <Field label="接口地址" hint={getAnthropicUrlHint(f.base_url_is_full)}>
+                      <Field label="协议">
+                        <AppDropdownSelect
+                          value={f.weworker_protocol}
+                          options={[
+                            { value: 'anthropic_messages', label: 'Anthropic Messages' },
+                            { value: 'openai_chat_completions', label: 'OpenAI Chat Completions' },
+                          ]}
+                          onChange={(value) => setFormField(p.id, 'weworker_protocol', value)}
+                          ariaLabel="WeWorker 对话协议"
+                          matchAnchorWidth
+                        />
+                      </Field>
+                      <Field label="接口地址" hint={f.weworker_protocol === 'openai_chat_completions' ? getOpenAiUrlHint(f.base_url_is_full) : getAnthropicUrlHint(f.base_url_is_full)}>
                         <label className="settings-url-mode">
                           <AppSwitch checked={f.base_url_is_full} onChange={(e) => setFormField(p.id, 'base_url_is_full', e.target.checked)} />
                           使用完整 URL
                         </label>
-                        <input aria-label="Claude Code 接口地址" className="settings-input" value={f.base_url} onChange={(e) => setFormField(p.id, 'base_url', e.target.value)} onBlur={() => { if (f.base_url) void loadModels(p.id, false, 'weworker') }} placeholder={f.base_url_is_full ? 'https://gateway.example/custom/messages' : 'https://gateway.example/anthropic'} />
+                        <input aria-label="WeWorker 对话接口地址" className="settings-input" value={f.base_url} onChange={(e) => setFormField(p.id, 'base_url', e.target.value)} onBlur={() => { if (f.base_url) void loadModels(p.id, false, 'weworker') }} placeholder={f.weworker_protocol === 'openai_chat_completions'
+                          ? (f.base_url_is_full ? 'https://gateway.example/v1/chat/completions' : 'https://gateway.example/v1')
+                          : (f.base_url_is_full ? 'https://gateway.example/v1/messages' : 'https://gateway.example/anthropic')} />
                       </Field>
-                      <Field label="API Key 类型">
+                      {f.weworker_protocol === 'openai_chat_completions' ? (
+                        <Field label="认证方式" hint="OpenAI Chat Completions 使用 Bearer Token">
+                          <input className="settings-input" value="Authorization: Bearer API Key" readOnly aria-label="OpenAI 认证方式" />
+                        </Field>
+                      ) : <Field label="API Key 类型" hint="如果不确定 Key 类型，选择 API Key 通常就可以">
                         <AppDropdownSelect
                           value={f.auth_type}
                           options={[
-                            { value: 'auth_token', label: 'Bearer Token（ANTHROPIC_AUTH_TOKEN）' },
                             { value: 'api_key', label: 'API Key（ANTHROPIC_API_KEY）' },
+                            { value: 'auth_token', label: 'Bearer Token（ANTHROPIC_AUTH_TOKEN）' },
                           ]}
                           onChange={(value) => setFormField(p.id, 'auth_type', value)}
                           ariaLabel="API Key 类型"
@@ -2192,8 +2216,8 @@ function ModelTab() {
                           matchAnchorWidth
                           className="settings-provider-auth-select"
                         />
-                      </Field>
-                      <Field label="API Key" hint={stored.has_key ? '已设置（留空保持不变）' : '未设置'}>
+                      </Field>}
+                      <Field label="API Key" hint={`${stored.has_key ? '已设置（留空保持不变）' : '未设置'}${f.weworker_protocol === 'openai_chat_completions' ? ' · Bearer Token' : ''}`}>
                         <input type="password" className="settings-input" value={f.api_key} onChange={(e) => setFormField(p.id, 'api_key', e.target.value)} onBlur={() => { if (f.api_key) void loadModels(p.id, false, 'weworker') }} placeholder={stored.has_key ? '••••••••••••' : 'sk-...'} />
                       </Field>
                       <Field label="模型" hint={catalogHint} hintError={catalogRefreshFailed || Boolean(catalogErrorDetail)} errorDetail={catalogErrorDetail}>
@@ -2204,7 +2228,7 @@ function ModelTab() {
                             disabled={hasFixedModel(templateId)}
                             onChange={handleModelChange}
                             onRemoveOption={handleRemoveCustomModel}
-                            ariaLabel="Claude Code 模型"
+                            ariaLabel="WeWorker 对话模型"
                             minMenuWidth={280}
                             matchAnchorWidth
                             className="settings-model-dropdown"

@@ -55,7 +55,7 @@ import {
   type UserDirectoryBlacklistEntry,
 } from './user-directory-blacklist.js'
 import { isAllowedHost, isAllowedOrigin, isAuthorizedHttpRequest, LOCAL_HTTP_PORT, redactSensitive } from './http-security.js'
-import { normalizeLlmUrlInput, resolveAnthropicEndpoint } from './llm-egress.js'
+import { isLlmProtocol, normalizeLlmUrlInput, resolveAnthropicEndpoint } from './llm-egress.js'
 import {
   ALLOWED_PROVIDER_IDS,
   PROVIDER_BASE_URLS,
@@ -402,7 +402,7 @@ function buildSettingsResponse(s: ReturnType<typeof getSettings>) {
       bank_coding: { has_key: !!s.api_key_bank_coding, model: configuredModel('bank_coding', s.model_bank_coding || ''), context_limit: s.context_limit_bank_coding || DEFAULT_CONTEXT_LIMIT, added: s.added_providers.includes('bank_coding'), visible: visible('bank_coding') },
       glm:       { has_key: !!s.api_key_glm,       model: configuredModel('glm', s.model_glm || ''), context_limit: s.context_limit_glm, added: s.added_providers.includes('glm'), visible: visible('glm') },
       deepseek:  { has_key: !!s.api_key_deepseek,  model: configuredModel('deepseek', s.model_deepseek || ''), context_limit: s.context_limit_deepseek, added: s.added_providers.includes('deepseek'), visible: visible('deepseek') },
-      custom:    { models_url_is_full: s.models_url_is_full_custom ?? Boolean(s.models_url_custom), openai_models_url_is_full: s.openai_models_url_is_full_custom ?? Boolean(s.openai_models_url_custom), models_url: s.models_url_custom || '', models_auth_type: s.models_auth_type_custom || 'inherit', openai_models_url: s.openai_models_url_custom || '', has_key: !!s.api_key_custom, openai_has_key: !!s.openai_api_key_custom || !!s.api_key_custom, model: configuredModel('custom', s.model_custom || ''), openai_model: s.openai_model_custom || s.model_custom, context_limit: s.context_limit_custom, base_url: s.base_url_custom, base_url_is_full: s.base_url_is_full_custom === true, openai_base_url: s.openai_base_url_custom, openai_base_url_is_full: s.openai_base_url_is_full_custom === true, auth_type: s.custom_auth_type, added: s.added_providers.includes('custom'), visible: visible('custom') },
+      custom:    { models_url_is_full: s.models_url_is_full_custom ?? Boolean(s.models_url_custom), openai_models_url_is_full: s.openai_models_url_is_full_custom ?? Boolean(s.openai_models_url_custom), models_url: s.models_url_custom || '', models_auth_type: s.models_auth_type_custom || 'inherit', openai_models_url: s.openai_models_url_custom || '', has_key: !!s.api_key_custom, openai_has_key: !!s.openai_api_key_custom || !!s.api_key_custom, model: configuredModel('custom', s.model_custom || ''), openai_model: s.openai_model_custom || s.model_custom, context_limit: s.context_limit_custom, base_url: s.base_url_custom, base_url_is_full: s.base_url_is_full_custom === true, weworker_protocol: s.weworker_protocol_custom || 'anthropic_messages', openai_base_url: s.openai_base_url_custom, openai_base_url_is_full: s.openai_base_url_is_full_custom === true, auth_type: s.custom_auth_type, added: s.added_providers.includes('custom'), visible: visible('custom') },
       ...publicModelConfigurations(s),
     }).filter(([id]) => ALLOWED_PROVIDER_IDS.has(id) || Boolean(getModelConfiguration(s, id)))
       .map(([id, configuration]) => [id, { ...configuration, name: names[id] }])),
@@ -600,8 +600,8 @@ app.post('/settings/provider/delete', (req, res) => {
 })
 
 app.post('/settings/provider', (req, res) => {
-  const { provider, name, api_key, openai_api_key, model, openai_model, context_limit, base_url, base_url_is_full, openai_base_url, openai_base_url_is_full, auth_type, added } = req.body as {
-    provider: string; name?: unknown; api_key?: string; openai_api_key?: string; model?: string; openai_model?: string; context_limit?: unknown; base_url?: string; base_url_is_full?: boolean; openai_base_url?: string; openai_base_url_is_full?: boolean; auth_type?: unknown; added?: boolean
+  const { provider, name, api_key, openai_api_key, model, openai_model, context_limit, base_url, base_url_is_full, openai_base_url, openai_base_url_is_full, auth_type, weworker_protocol, added } = req.body as {
+    provider: string; name?: unknown; api_key?: string; openai_api_key?: string; model?: string; openai_model?: string; context_limit?: unknown; base_url?: string; base_url_is_full?: boolean; openai_base_url?: string; openai_base_url_is_full?: boolean; auth_type?: unknown; weworker_protocol?: unknown; added?: boolean
   }
   let nameUpdates: Partial<Settings> = {}
   if (name !== undefined) {
@@ -668,6 +668,10 @@ app.post('/settings/provider', (req, res) => {
     res.status(400).json({ detail: "auth_type must be 'auth_token' or 'api_key'" })
     return
   }
+  if (provider === 'custom' && weworker_protocol !== undefined && !isLlmProtocol(weworker_protocol)) {
+    res.status(400).json({ detail: 'WeWorker 对话协议无效' })
+    return
+  }
   const parsedContextLimit = context_limit === undefined ? undefined : parseContextLimit(context_limit)
   if (context_limit !== undefined && parsedContextLimit === null) {
     res.status(400).json({ detail: '上下文窗口请输入 1K 到 100M 之间的整数，可使用 K/M 单位' })
@@ -719,6 +723,7 @@ app.post('/settings/provider', (req, res) => {
   if (provider === 'custom' && openai_base_url !== undefined) updates.openai_base_url_custom = allowedOpenAiBaseUrl
   if (provider === 'custom' && openai_base_url_is_full !== undefined) updates.openai_base_url_is_full_custom = openai_base_url_is_full
   if (provider === 'custom' && isAnthropicAuthType(auth_type)) updates.custom_auth_type = auth_type
+  if (provider === 'custom' && isLlmProtocol(weworker_protocol)) updates.weworker_protocol_custom = weworker_protocol
   // If this provider is currently active, also update the active key/model/url
   const current = getSettings()
   if (added === true) {
@@ -733,6 +738,7 @@ app.post('/settings/provider', (req, res) => {
     if (parsedContextLimit !== undefined && parsedContextLimit !== null) updates.context_limit = parsedContextLimit
     if (provider === 'custom' && base_url !== undefined) updates.base_url = allowedBaseUrl
     if (provider === 'custom' && base_url_is_full !== undefined) updates.base_url_is_full = base_url_is_full
+    if (provider === 'custom' && isLlmProtocol(weworker_protocol)) updates.active_weworker_protocol = weworker_protocol
   }
   res.json(buildSettingsResponse(updateSettings(updates)))
 })
@@ -792,6 +798,7 @@ app.post('/settings/provider/activate', (req, res) => {
     active_provider: provider,
     active_model_configuration: '',
     active_auth_type: provider === 'custom' ? current.custom_auth_type : getProvider(provider)?.authType || 'api_key',
+    active_weworker_protocol: provider === 'custom' ? current.weworker_protocol_custom || 'anthropic_messages' : 'anthropic_messages',
     api_key: key,
     model,
     context_limit: contextLimit,
@@ -812,16 +819,22 @@ type ProviderRequestBody = {
   openai_base_url?: string
   openai_base_url_is_full?: boolean
   auth_type?: unknown
+  weworker_protocol?: unknown
   target?: ProbeTarget
   auto_auth?: boolean
 }
 
 function resolveProviderAccess(body: ProviderRequestBody) {
-  const configuration = getModelConfiguration(getSettings(), body.provider)
+  const settings = getSettings()
+  const configuration = getModelConfiguration(settings, body.provider)
   const provider = getProvider(configuration?.provider_id || body.provider || '')
   if (!provider) throw new Error(`Provider '${body.provider || ''}' is not allowed in this build`)
   if (isBuiltinProvider(provider.id)) return builtinProviderAccess(provider)
-  const settings = getSettings()
+  const weworkerProtocol = provider.id === 'custom'
+    ? body.weworker_protocol === undefined
+      ? configuration?.weworker_protocol || settings.weworker_protocol_custom || 'anthropic_messages'
+      : isLlmProtocol(body.weworker_protocol) ? body.weworker_protocol : (() => { throw new Error('WeWorker 对话协议无效') })()
+    : provider.weworker.protocol
   const savedApiKey =
     configuration?.api_key ?? (provider.id === 'anthropic' ? settings.api_key_anthropic :
       provider.id === 'bank_coding' ? settings.api_key_bank_coding || '' :
@@ -836,9 +849,19 @@ function resolveProviderAccess(body: ProviderRequestBody) {
     && (body.openai_base_url_is_full ?? (configuration ? configuration.openai_base_url_is_full ?? false : settings.openai_base_url_is_full_custom ?? false))
   if (typeof openaiFullUrl !== 'boolean') throw new Error('使用完整 URL 必须为布尔值')
   const openaiUrl = body.openai_base_url === undefined ? configuration?.openai_base_url ?? settings.openai_base_url_custom : body.openai_base_url
+  const weworkerUrl = body.target === 'weworker'
+    ? (body.base_url === undefined ? configuration?.base_url ?? settings.base_url_custom : body.base_url)
+    : undefined
+  const weworkerFullUrl = body.target === 'weworker'
+    ? (body.base_url_is_full ?? (configuration ? configuration.base_url_is_full ?? false : settings.base_url_is_full_custom ?? false))
+    : undefined
+  if (weworkerFullUrl !== undefined && typeof weworkerFullUrl !== 'boolean') throw new Error('使用完整 URL 必须为布尔值')
   return {
     provider,
     target: body.target,
+    weworkerProtocol,
+    ...(weworkerUrl?.trim() ? { weworkerBaseUrl: normalizeLlmUrlInput(weworkerUrl, weworkerFullUrl === true) } : {}),
+    ...(weworkerFullUrl !== undefined ? { weworkerFullUrl } : {}),
     apiKey: body.api_key?.trim() || savedApiKey,
     openaiApiKey: body.openai_api_key?.trim() || savedOpenAiApiKey,
     anthropicBaseUrl: provider.id === 'custom'

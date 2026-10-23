@@ -11,7 +11,7 @@ it('shows unconfigured presets in chat with key state, keeping configured additi
   }, 'builtin')
   assert.deepEqual(options.map(item => item.value), ['builtin', 'anthropic', 'glm', 'deepseek', 'model-extra'])
   assert.deepEqual(options.slice(1, 4).map(item => item.keyConfigured), [true, false, false])
-  assert.equal(options[4].label, '额外配置 · fixture-model')
+  assert.equal(options[4].label, '额外配置')
   assert.deepEqual(options.map(item => item.keyConfigured), [true, true, false, false, true])
   assert.equal(buildChatProviderOptions(templates, {}, 'old-provider')[0].value, 'old-provider')
 })
@@ -65,6 +65,16 @@ describe('model catalog connection prerequisites', () => {
     assert.equal(openai.openai_api_key, 'fixture-openai-key')
     assert.equal(openai.openai_base_url, form.openai_base_url)
     assert.equal(openai.target, 'webwright')
+  })
+
+  it('uses the selected WeWorker protocol when validating and requesting its model catalog', () => {
+    const openaiChat = { ...form, weworker_protocol: 'openai_chat_completions', models_url: '', base_url: 'https://example.com/v1' }
+    assert.equal(getModelCatalogIssue('custom', openaiChat, { has_key: true }), '')
+    const access = buildModelCatalogAccess('fixture', 'custom', openaiChat)
+    assert.equal(access.weworker_protocol, 'openai_chat_completions')
+    assert.equal(access.api_key, '')
+    assert.equal(access.openai_api_key, '')
+    assert.equal(access.base_url, openaiChat.base_url)
   })
 
   it('allows explicit catalog URLs with full conversation endpoints and keeps the two catalogs separate', () => {
