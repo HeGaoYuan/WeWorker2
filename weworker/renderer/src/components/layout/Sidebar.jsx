@@ -73,7 +73,7 @@ export default function Sidebar({ section, collapsed, width }) {
       title: '新定时任务',
       cron_expression: '0 * * * *',
       prompt_template: '',
-      enabled: false,
+      enabled: true,
     })
     if (!task) showAlert('创建定时任务失败，请确认后端服务已启动后重试')
   }
