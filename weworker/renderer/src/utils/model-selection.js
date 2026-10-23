@@ -1,21 +1,27 @@
 import { isFixedProvider, isBuiltinProvider, configuredProvider } from './provider-config.js'
 export { isFixedProvider } from './provider-config.js'
 
-export function buildModelOptions(models, currentModel, { annotateCurrent = true } = {}) {
+export function buildModelOptions(models, currentModel, { annotateCurrent = true, customModels = [] } = {}) {
   const values = [...new Set((Array.isArray(models) ? models : [])
     .map((model) => String(model || '').trim())
     .filter(Boolean))]
+  const customValues = [...new Set((Array.isArray(customModels) ? customModels : [])
+    .map((model) => String(model || '').trim())
+    .filter(Boolean))]
+  const customSet = new Set(customValues)
+  const allValues = [...new Set([...values, ...customValues])]
   const current = String(currentModel || '').trim()
   return [
-    ...(current && !values.includes(current)
+    ...(current && !allValues.includes(current)
       ? [{ value: current, label: annotateCurrent ? `${current}（当前配置）` : current, currentOnly: true }]
       : []),
-    ...values.map((value) => ({ value, label: value, currentOnly: false })),
+    ...allValues.map((value) => ({ value, label: value, currentOnly: false, ...(customSet.has(value) ? { custom: true } : {}) })),
   ]
 }
 
-export function selectModelAfterCatalogRefresh(currentModel, catalog) {
+export function selectModelAfterCatalogRefresh(currentModel, catalog, { customModels = [] } = {}) {
   const current = String(currentModel || '').trim()
+  if (current && Array.isArray(customModels) && customModels.includes(current)) return current
   const models = [...new Set((Array.isArray(catalog?.models) ? catalog.models : [])
     .map((model) => String(model || '').trim())
     .filter(Boolean))]

@@ -102,6 +102,15 @@ describe('model catalog connection prerequisites', () => {
 })
 
 describe('provider model selection', () => {
+  it('keeps custom models alongside refreshed catalog entries and marks them removable', () => {
+    assert.deepEqual(buildModelOptions(['remote-a'], 'my-local-model', { customModels: ['my-local-model'] }), [
+      { value: 'remote-a', label: 'remote-a', currentOnly: false },
+      { value: 'my-local-model', label: 'my-local-model', currentOnly: false, custom: true },
+    ])
+    assert.equal(selectModelAfterCatalogRefresh('my-local-model', { source: 'remote', models: ['remote-a'] }, { customModels: ['my-local-model'] }), 'my-local-model')
+    assert.equal(selectModelAfterCatalogRefresh('stale-model', { source: 'remote', models: ['remote-a'] }, { customModels: ['my-local-model'] }), 'remote-a')
+  })
+
   it('keeps an unlisted current model as an enabled option', () => {
     assert.deepEqual(buildModelOptions(['deepseek-v4-flash'], 'deepseek-chat'), [
       { value: 'deepseek-chat', label: 'deepseek-chat（当前配置）', currentOnly: true },

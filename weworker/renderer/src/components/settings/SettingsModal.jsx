@@ -1494,6 +1494,7 @@ function ModelTab() {
       api_key: '',
       openai_api_key: '',
       model: hasFixedModel(providerType(pid)) ? p.defaultModel : stored.model || p?.defaultModel || '',
+      custom_models: Array.isArray(stored.custom_models) ? stored.custom_models : [],
       openai_model: hasFixedModel(providerType(pid)) ? p.defaultModel : stored.openai_model ?? (stored.model || p?.defaultModel || ''),
       context_limit: formatContextLimitInput(stored.context_limit),
       base_url: stored.base_url || '',
@@ -1570,7 +1571,9 @@ function ModelTab() {
       setForms((current) => {
         const latestForm = current[pid] || getForm(pid)
         const field = target === 'webwright' ? 'openai_model' : 'model'
-        const nextModel = selectModelAfterCatalogRefresh(latestForm[field], data)
+        const nextModel = selectModelAfterCatalogRefresh(latestForm[field], data, {
+          customModels: target === 'weworker' ? latestForm.custom_models : [],
+        })
         return nextModel === latestForm[field] ? current : { ...current, [pid]: { ...latestForm, [field]: nextModel } }
       })
     } catch (error) {
@@ -1637,6 +1640,7 @@ function ModelTab() {
       updates.models_auth_type = f.models_auth_type
       updates.openai_models_url = f.openai_models_url
       updates.openai_models_url_is_full = f.openai_models_url_is_full
+      updates.custom_models = f.custom_models
       if (f.openai_model) updates.openai_model = f.openai_model
     }
     try {
@@ -1984,7 +1988,24 @@ function ModelTab() {
           const openAiCatalogIssue = getModelCatalogIssue(templateId, f, stored, 'webwright')
           const { hint: catalogHint, failed: catalogRefreshFailed, detail: catalogErrorDetail } = getModelCatalogStatus(catalog, loadingModels, catalogIssue)
           const openAiCatalogStatus = getModelCatalogStatus(openAiCatalog, loadingOpenAiModels, openAiCatalogIssue)
-          const modelOptions = buildModelOptions(!catalogIssue && catalog?.source === 'remote' ? catalog.models : [], f.model)
+          const remoteModels = !catalogIssue && catalog?.source === 'remote' ? catalog.models : []
+          const modelOptions = buildModelOptions(remoteModels, f.model, { customModels: f.custom_models })
+            .map(option => ({ ...option, removable: option.custom === true }))
+          const handleModelChange = (value) => {
+            const custom_models = remoteModels.some(model => String(model).trim() === value)
+              ? f.custom_models
+              : [...new Set([...(f.custom_models || []), value])]
+            setFormField(p.id, 'model', value)
+            setForms(current => ({ ...current, [p.id]: { ...(current[p.id] || getForm(p.id)), custom_models } }))
+          }
+          const handleRemoveCustomModel = (value) => {
+            const custom_models = (f.custom_models || []).filter(model => model !== value)
+            const model = f.model === value
+              ? String(remoteModels.find(item => String(item).trim() !== value) || '')
+              : f.model
+            setFormField(p.id, 'model', model)
+            setForms(current => ({ ...current, [p.id]: { ...(current[p.id] || getForm(p.id)), custom_models } }))
+          }
           const openAiModelOptions = buildModelOptions(!openAiCatalogIssue && openAiCatalog?.source === 'remote' ? openAiCatalog.models : [], f.openai_model)
           const providerColor = templateId === 'custom' ? 'var(--provider-custom)' : p.color
           const detailActions = (
@@ -2113,14 +2134,15 @@ function ModelTab() {
                           value={f.model}
                           options={modelOptions}
                           disabled={hasFixedModel(templateId)}
-                          onChange={(value) => setFormField(p.id, 'model', value)}
+                          onChange={handleModelChange}
+                          onRemoveOption={handleRemoveCustomModel}
                           ariaLabel="模型"
                           minMenuWidth={280}
                           matchAnchorWidth
                           className="settings-model-dropdown"
                           searchable
                           allowCustom
-                          searchPlaceholder="搜索或输入模型名"
+                          searchPlaceholder="搜索或者添加自定义模型"
                         />
                         <button type="button" onClick={() => loadModels(p.id, true)} disabled={hasFixedModel(templateId) || loadingModels || Boolean(catalogIssue)} className="settings-btn settings-btn-secondary">
                           {loadingModels ? '获取中…' : '刷新模型'}
@@ -2180,14 +2202,15 @@ function ModelTab() {
                             value={f.model}
                             options={modelOptions}
                             disabled={hasFixedModel(templateId)}
-                            onChange={(value) => setFormField(p.id, 'model', value)}
+                            onChange={handleModelChange}
+                            onRemoveOption={handleRemoveCustomModel}
                             ariaLabel="Claude Code 模型"
                             minMenuWidth={280}
                             matchAnchorWidth
                             className="settings-model-dropdown"
                             searchable
                             allowCustom
-                            searchPlaceholder="搜索或输入模型名"
+                            searchPlaceholder="搜索或者添加自定义模型"
                           />
                           <button type="button" onClick={() => loadModels(p.id, true, 'weworker')} disabled={hasFixedModel(templateId) || loadingModels || Boolean(catalogIssue)} className="settings-btn settings-btn-secondary">
                             {loadingModels ? '获取中…' : '刷新模型'}

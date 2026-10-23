@@ -713,6 +713,40 @@ html.theme-instant-switch *::after {
   transition: background-color 0.16s ease, color 0.16s ease;
 }
 
+.app-dropdown-select__removable-option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 10px;
+}
+
+.app-dropdown-select__removable-option > [role='option'] {
+  flex: 1;
+  width: 0;
+}
+
+.app-dropdown-select__remove-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.app-dropdown-select__remove-option:hover,
+.app-dropdown-select__remove-option:focus-visible {
+  background: var(--dropdown-hover);
+  color: var(--danger, #d14343);
+  outline: none;
+}
+
 .app-dropdown-menu-item.is-rich {
   overflow: hidden;
 }
