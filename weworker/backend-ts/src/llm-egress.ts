@@ -1,3 +1,9 @@
+export type LlmProtocol = 'anthropic_messages' | 'openai_chat_completions'
+
+export function isLlmProtocol(value: unknown): value is LlmProtocol {
+  return value === 'anthropic_messages' || value === 'openai_chat_completions'
+}
+
 export interface ProviderEntry {
   id: string
   name: string
@@ -11,7 +17,7 @@ export interface ProviderEntry {
   apiKeyEnv?: string
   baseUrlEnv?: string
   presentation?: { subtitle: string; color: string; bg: string }
-  weworker: { protocol: 'anthropic_messages'; baseUrl: string }
+  weworker: { protocol: LlmProtocol; baseUrl: string }
   webwright: {
     protocol: 'anthropic_messages' | 'openai_chat_completions'
     modelClass: 'anthropic' | 'zhipu' | 'openai_chat'

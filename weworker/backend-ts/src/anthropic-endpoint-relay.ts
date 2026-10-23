@@ -3,6 +3,7 @@ import https from 'node:https'
 import { randomBytes } from 'node:crypto'
 import type { Settings } from './config.js'
 import { normalizeLlmUrlInput } from './llm-egress.js'
+import { openOpenAiChatRelay } from './anthropic-openai-compat.js'
 
 // Claude Code always appends its Messages path. Translate only that local path
 // to the user's exact endpoint, preserving the upstream URL, body and SSE stream.
@@ -55,6 +56,13 @@ export async function openAnthropicEndpointRelay(endpoint: string) {
 }
 
 export async function prepareModelRuntime(settings: Settings) {
+  if (settings.active_weworker_protocol === 'openai_chat_completions') {
+    const relay = await openOpenAiChatRelay(settings.base_url, settings.base_url_is_full === true)
+    return {
+      settings: { ...settings, base_url: relay.baseUrl, base_url_is_full: false },
+      close: relay.close,
+    }
+  }
   if (!settings.base_url_is_full) return { settings, close: async () => {} }
   const relay = await openAnthropicEndpointRelay(settings.base_url)
   return {

@@ -159,7 +159,7 @@ export function buildClaudeNativeShellEnv(
 }
 
 export function buildConfiguredModelEnv(
-  settings: Pick<Settings, 'api_key' | 'base_url'> & Partial<Pick<Settings, 'active_provider' | 'custom_auth_type' | 'active_auth_type' | 'model'>>,
+  settings: Pick<Settings, 'api_key' | 'base_url'> & Partial<Pick<Settings, 'active_provider' | 'active_weworker_protocol' | 'custom_auth_type' | 'active_auth_type' | 'model'>>,
   extraEnv?: NodeJS.ProcessEnv,
   claudeConfigDir?: string,
 ): NodeJS.ProcessEnv {
@@ -1542,6 +1542,7 @@ async function* streamChatWithBaseUrl(
     const workId = opts.workId ?? null
     const fingerprint = sha256(JSON.stringify({
       model: settings.model,
+      protocol: settings.active_weworker_protocol || 'anthropic_messages',
       baseUrl: internal.sessionBaseUrl,
       apiKey: sha256(settings.api_key || ''),
       provider: settings.active_provider,

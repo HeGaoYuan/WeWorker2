@@ -297,6 +297,8 @@ export interface Settings {
   model_configuration_names?: Record<string, string>
   active_model_configuration?: string
   active_auth_type?: import('./anthropic-auth.js').AnthropicAuthType
+  active_weworker_protocol?: import('./llm-egress.js').LlmProtocol
+  weworker_protocol_custom?: import('./llm-egress.js').LlmProtocol
 
   channel_configurations?: ChannelConfigurations
   active_channel_configurations?: Partial<Record<ChannelType, string>>
@@ -409,6 +411,7 @@ const DEFAULTS: Settings = {
   context_limit_custom: DEFAULT_CONTEXT_LIMIT,
 
   base_url_custom: '',
+  weworker_protocol_custom: 'anthropic_messages',
   models_url_custom: '',
   models_auth_type_custom: 'inherit',
   openai_models_url_custom: '',
@@ -568,6 +571,15 @@ function loadSettingsFromRaw(raw: Record<string, unknown> | null): Settings {
   stripObsoleteZcfSettings(merged as unknown as Record<string, unknown>)
 
   merged.custom_auth_type = raw?.custom_auth_type === 'api_key' ? 'api_key' : 'auth_token'
+  merged.weworker_protocol_custom = raw?.weworker_protocol_custom === 'openai_chat_completions' ? 'openai_chat_completions' : 'anthropic_messages'
+  merged.active_weworker_protocol = raw?.active_weworker_protocol === 'openai_chat_completions' ? 'openai_chat_completions' : 'anthropic_messages'
+  for (const configuration of Object.values(merged.model_configurations || {})) {
+    if (configuration?.provider_id === 'custom') {
+      configuration.weworker_protocol = configuration.weworker_protocol === 'openai_chat_completions'
+        ? 'openai_chat_completions'
+        : 'anthropic_messages'
+    }
+  }
 
   merged.added_providers = normalizeAddedProviders(raw?.added_providers)
 
@@ -587,6 +599,9 @@ function loadSettingsFromRaw(raw: Record<string, unknown> | null): Settings {
   const activeConfiguration = merged.model_configurations?.[merged.active_model_configuration || '']
   if (activeConfiguration) {
     merged.context_limit = normalizeContextLimit(activeConfiguration.context_limit)
+    merged.active_weworker_protocol = activeConfiguration.weworker_protocol || 'anthropic_messages'
+  } else if (raw?.active_weworker_protocol === undefined && merged.active_provider === 'custom') {
+    merged.active_weworker_protocol = merged.weworker_protocol_custom
   }
 
   merged.max_chat_attachments = normalizeMaxChatAttachments(merged.max_chat_attachments)
