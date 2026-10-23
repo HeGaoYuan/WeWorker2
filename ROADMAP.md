@@ -1,5 +1,7 @@
 # WeWorker Roadmap
 
+- 2026-10-23：修复 Pattern 路由从匹配器接入级联规划时丢失 `render.schemaId` 的问题，并以端到端配置层测试覆盖完整调用链。验证：聚焦配置层测试与 Backend TypeScript 检查通过；完整内部三平台打包待合入后复验。
+
 - 2026-10-23：补齐 Tier -1 Pattern 路由的声明式渲染传递：`patterns.json` 可声明与 route／alias／shortcut 相同的 `render`，匹配结果和 Cascade 决策会继续携带 schemaId，配置校验与随包 schema 引用检查同步覆盖。验证：新增 Pattern matcher 与 Cascade 聚焦回归 3 项、Backend TypeScript 检查通过；完整内部三平台打包待公共修复合入后复验。
 
 - 2026-10-22：将 host-managed Extension Adapter 在没有可复用业务页时的默认入口从 `https://<route>/` 改为 `http://<route>/`，使仅支持 HTTP 的内网站点可达；HTTPS 站点继续由浏览器自身跳转升级。URL 主机仍按命令 `tabDomain`／`routeDomain`、再到 Adapter primary host 决定；不改变显式 `open_browser`、命令 `navigate_before`、登录入口或后台 API 的协议。验证：Extension 路由 44 项通过。未验证：`npm run build:webcli` 因本地缺少 `esbuild` 依赖无法启动，未验证完整安装包与真实内部 HTTP 站点。
