@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import vm from 'node:vm';
 import { createManagedBackgroundRuntime } from '../../extension/background/managed-background-runtime.js';
+import { extractFlagArgs } from '../index.js';
 
 function fixture({ source, timeoutMs = 1000, failAttach = false, documents = [] } = {}) {
   const manifest = { name: 'demo', match: ['example.com'], commands: [{ id: 'run', runtime: 'extension', safety: 'write',
@@ -79,11 +80,52 @@ describe('managed background execution lifecycle', () => {
     await expect(f.run()).rejects.toThrow(/background execution/);
     expect(f.api.offscreen.createDocument).not.toHaveBeenCalled();
   });
-  it('validates explicit runtime schemas without coercing business parameters', async () => {
+  it('validates required and unknown parameters against explicit runtime schemas', async () => {
     const f = fixture({ source: '__webcliRegisterCommand("run", args => __webmcpWecliRuntime.validateArgs(args, {type:"object",properties:{count:{type:"integer"}},required:["count"],additionalProperties:false}));' });
-    await expect(f.run()).rejects.toMatchObject({code:'INVALID_ARGS'});
+    await expect(f.run({__confirmed:true})).rejects.toMatchObject({code:'INVALID_ARGS'});
     expect(await f.run({__confirmed:true,count:7})).toEqual({__confirmed:true,count:7});
     await expect(f.run({__confirmed:true,count:7,unknown:true})).rejects.toMatchObject({code:'INVALID_ARGS'});
+  });
+  it('normalizes CLI numeric flags only when the runtime schema requests numbers', async () => {
+    const schema = { type: 'object', properties: {
+      pageSize: { type: 'integer', default: 20 }, page: { type: 'integer', default: 1 },
+      ratio: { type: 'number' }, id: { type: 'string' }, enabled: { type: 'boolean' },
+      tags: { type: 'array', items: { type: 'string' } }, extra: { type: 'object' },
+    }, additionalProperties: false };
+    const f = fixture({ source: `__webcliRegisterCommand("run", args => __webmcpWecliRuntime.validateArgs(args, ${JSON.stringify(schema)}));` });
+    const { args } = extractFlagArgs(['--pageSize=50', '--ratio=0.5', '--id=007', '--enabled=false', '--tags=["one","two"]', '--extra={"count":2}']);
+    expect(args.pageSize).toBe('50');
+    const input = Object.freeze({ ...args, __confirmed: true });
+    expect(await f.run(input)).toEqual({ ...input, pageSize: 50, page: 1, ratio: 0.5 });
+    expect(input.pageSize).toBe('50');
+    expect(await f.run({ __confirmed: true, pageSize: '0', ratio: '-1.5', id: '007' }))
+      .toEqual({ __confirmed: true, pageSize: 0, page: 1, ratio: -1.5, id: '007' });
+  });
+  it('preserves explicit JSON numbers and validates enums after numeric conversion', async () => {
+    const f = fixture({ source: '__webcliRegisterCommand("run", args => __webmcpWecliRuntime.validateArgs(args, {type:"object",properties:{count:{type:"integer",enum:[0,50]}}}));' });
+    const { args } = extractFlagArgs(['--args', '{"count":50}']);
+    expect(await f.run({ ...args, __confirmed: true })).toEqual({ count: 50, __confirmed: true });
+    expect(await f.run({ count: '0', __confirmed: true })).toEqual({ count: 0, __confirmed: true });
+    await expect(f.run({ count: '2', __confirmed: true })).rejects.toMatchObject({ code: 'INVALID_ARGS' });
+  });
+  it('keeps invalid numeric values rejected instead of truncating or substituting defaults', async () => {
+    for (const type of ['integer', 'number']) {
+      const f = fixture({ source: `__webcliRegisterCommand("run", args => __webmcpWecliRuntime.validateArgs(args, {type:"object",properties:{count:{type:"${type}",default:20}}}));` });
+      for (const count of ['', ' ', 'abc', '50rows', 'NaN', 'Infinity', '1e999', true, null, ...(type === 'integer' ? ['1.5'] : [])]) {
+        await expect(f.run({ count, __confirmed: true })).rejects.toMatchObject({ code: 'INVALID_ARGS' });
+      }
+    }
+  });
+  it('supports numeric nullable schemas without changing schemas that accept strings', async () => {
+    const f = fixture({ source: '__webcliRegisterCommand("run", args => __webmcpWecliRuntime.validateArgs(args, {type:"object",properties:{count:{type:["integer","null"]},id:{type:["integer","string"]}}}));' });
+    expect(await f.run({ count: '50', id: '007', __confirmed: true })).toEqual({ count: 50, id: '007', __confirmed: true });
+    expect(await f.run({ count: null, __confirmed: true })).toEqual({ count: null, __confirmed: true });
+  });
+  it('matches the existing integer-array CLI syntax without splitting string arrays', async () => {
+    const f = fixture({ source: '__webcliRegisterCommand("run", args => __webmcpWecliRuntime.validateArgs(args, {type:"object",properties:{ids:{type:"array",items:{type:"integer"}},names:{type:"array",items:{type:"string"}}}}));' });
+    expect(await f.run({ ids: '1, 2,3', __confirmed: true })).toEqual({ ids: [1, 2, 3], __confirmed: true });
+    await expect(f.run({ ids: '1,no', __confirmed: true })).rejects.toMatchObject({ code: 'INVALID_ARGS' });
+    await expect(f.run({ names: 'one,two', __confirmed: true })).rejects.toMatchObject({ code: 'INVALID_ARGS' });
   });
   it('binds helper requests to the active document and immutable call context', async () => {
     const f = fixture({ source: '__webcliRegisterCommand("run", async () => __webmcpWecliRuntime.requestPrivileged("fixture", { value: "ok" }));' });

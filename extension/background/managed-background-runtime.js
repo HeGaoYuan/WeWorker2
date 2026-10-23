@@ -36,9 +36,24 @@ function initializeRuntime(token, context) {
         }
       }
       for (const [name, definition] of Object.entries(schema.properties || {})) {
-        const value = result[name];
+        let value = result[name];
         if (value === undefined || !definition || typeof definition !== 'object') continue;
         const types = Array.isArray(definition.type) ? definition.type : [definition.type];
+        // CLI numeric flags stay strings. Match page-runtime normalization only
+        // for explicitly numeric schemas; string IDs (including leading zeros)
+        // and handlers that do not call validateArgs must retain their values.
+        if (typeof value === 'string' && value.trim() !== '' && !types.includes('string')) {
+          const numeric = Number(value.trim());
+          if ((types.includes('integer') && Number.isInteger(numeric))
+            || (types.includes('number') && Number.isFinite(numeric))) {
+            value = numeric;
+          } else if (types.includes('array') && definition.items?.type === 'integer') {
+            const parts = value.split(',').map(part => part.trim()).filter(Boolean);
+            const numbers = parts.map(Number);
+            if (parts.length > 0 && numbers.every(Number.isInteger)) value = numbers;
+          }
+          result[name] = value;
+        }
         if (!types.some(type => !type || (type === 'null' ? value === null : type === 'array' ? Array.isArray(value)
           : type === 'integer' ? Number.isInteger(value) : type === 'number' ? typeof value === 'number' && Number.isFinite(value)
           : type === 'object' ? value !== null && typeof value === 'object' && !Array.isArray(value) : typeof value === type))) {
