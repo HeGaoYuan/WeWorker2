@@ -304,7 +304,7 @@ export function validateV2Manifest(manifest, directoryName = "?") {
   return { name: manifest.name, manifest, commands };
 }
 
-const AUTH_FIELDS = new Set(["login_url", "login_hosts", "check", "autologin", "display_name"]);
+const AUTH_FIELDS = new Set(["login_url", "login_hosts", "check", "autologin", "display_name", "qr"]);
 const AUTH_HOST_RE = /^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/;
 
 const authHostMatches = hostMatchesPattern;
@@ -312,9 +312,8 @@ const authHostMatches = hostMatchesPattern;
 function authUrl(adapterName, value, field, hosts) {
   let url;
   try { url = new URL(String(value)); } catch { fail(adapterName, `auth.${field} must be an absolute URL.`); }
-  const local = url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname);
-  if ((url.protocol !== "https:" && !local) || url.username || url.password) {
-    fail(adapterName, `auth.${field} must be an https URL without credentials.`);
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) {
+    fail(adapterName, `auth.${field} must be an HTTP(S) URL without credentials.`);
   }
   if (!hosts.some((pattern) => authHostMatches(url.hostname.toLowerCase(), pattern))) {
     fail(adapterName, `auth.${field} host must be declared in match, domains, runtime_allowed_hosts or auth.login_hosts.`);
@@ -386,10 +385,21 @@ function validateAuth(adapterName, manifest, commands, hasExtension) {
   }
   if (auth.autologin !== undefined) {
     const autologin = auth.autologin;
+    const selectorFields = ["switch", "username", "password", "submit"];
     if (!autologin || typeof autologin !== "object" || Array.isArray(autologin)
-      || Object.entries(autologin).some(([key, value]) => !["switch", "username", "password", "submit"].includes(key)
-        || typeof value !== "string" || !value.trim() || value.length > 200)) {
-      fail(adapterName, "auth.autologin may only declare switch, username, password and submit CSS selectors.");
+      || Object.keys(autologin).some((key) => !["mode", ...selectorFields].includes(key))
+      || (autologin.mode !== undefined && !["auto", "off"].includes(autologin.mode))
+      || selectorFields.some((key) => autologin[key] !== undefined
+        && (typeof autologin[key] !== "string" || !autologin[key].trim() || autologin[key].length > 200))) {
+      fail(adapterName, "auth.autologin may only declare mode: auto|off and switch, username, password or submit CSS selectors (default: auto).");
+    }
+  }
+  if (auth.qr !== undefined) {
+    const qr = auth.qr;
+    if (!qr || typeof qr !== "object" || Array.isArray(qr)
+      || Object.keys(qr).some((key) => !["mode"].includes(key))
+      || (qr.mode !== undefined && !["auto", "off"].includes(qr.mode))) {
+      fail(adapterName, "auth.qr may only declare mode: auto|off (default: auto).");
     }
   }
 }

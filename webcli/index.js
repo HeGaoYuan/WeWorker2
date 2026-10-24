@@ -546,6 +546,11 @@ async function requireLoginSite(site) {
   return manifest;
 }
 
+function requireAutologinSite(manifest) {
+  if (manifest?.auth?.autologin?.mode === 'off') throw new Error('该网站不支持自动登录，请使用二维码、动态密码或其他方式手动登录。');
+  return manifest;
+}
+
 const LOGIN_STATE_TEXT = { logged_in: "已登录", logged_out: "未登录", unknown: "未知" };
 
 async function cmdLogin(site, { json = false, loginWaitSeconds, profile } = {}) {
@@ -593,15 +598,24 @@ async function cmdAuth(sub, rest = [], { json = false, profile } = {}) {
         const sites = await loadLoginSites();
         status = {
           autologinSupported: vault.supported,
-          sites: sites.map((manifest) => ({
-            site: manifest.name, name: manifest.auth.display_name || manifest.i18n?.zh?.name || manifest.name,
-            state: "unknown", autologin: { supported: vault.supported, ...vault.site(manifest.name) },
-          })),
+          sites: sites.map((manifest) => {
+            const mode = manifest.auth.autologin?.mode === 'off' ? 'off' : 'auto';
+            const preferences = vault.site(manifest.name);
+            return {
+              site: manifest.name, name: manifest.auth.display_name || manifest.i18n?.zh?.name || manifest.name,
+              state: "unknown", autologin: {
+                supported: vault.supported, allowed: mode !== 'off', mode, ...preferences,
+                ...(mode === 'off' ? { enabled: false } : {}),
+              },
+            };
+          }),
         };
       }
       if (json) { console.log(JSON.stringify(status, null, 2)); return; }
       for (const entry of status.sites) {
-        const auto = entry.autologin?.enabled ? `自动登录：开（${entry.autologin.username}）` : entry.autologin?.configured ? "自动登录：已暂停" : "自动登录：关";
+        const auto = entry.autologin?.allowed === false
+          ? "自动登录：不支持"
+          : entry.autologin?.enabled ? `自动登录：开（${entry.autologin.username}）` : entry.autologin?.configured ? "自动登录：已暂停" : "自动登录：关";
         console.log(`${entry.site.padEnd(18)} ${entry.name.padEnd(10)} ${(LOGIN_STATE_TEXT[entry.state] || entry.state).padEnd(4)} ${auto}${entry.flow ? `  登录中（${entry.flow}）` : ""}`);
       }
       if (!status.autologinSupported) console.log("\n当前系统暂不支持安全保存密码（目前支持 Windows），自动登录不可用。");
@@ -616,7 +630,8 @@ async function cmdAuth(sub, rest = [], { json = false, profile } = {}) {
       return;
     }
     if (sub === "save") {
-      await requireLoginSite(site);
+      const manifest = await requireLoginSite(site);
+      requireAutologinSite(manifest);
       if (!vault.supported) throw new Error("当前系统暂不支持安全保存密码（目前支持 Windows）。");
       if (!process.stdin.isTTY || !process.stderr.isTTY) throw new Error("保存密码需要在本机交互式终端中运行。");
       process.stderr.write(`${AUTOLOGIN_NOTICE}\n\n`);
@@ -635,9 +650,10 @@ async function cmdAuth(sub, rest = [], { json = false, profile } = {}) {
       return;
     }
     if (sub === "autologin") {
-      await requireLoginSite(site);
+      const manifest = await requireLoginSite(site);
       const value = rest[1];
       if (!["on", "off"].includes(value)) throw new Error("用法：webcli auth autologin <网站> on|off");
+      if (value === "on") requireAutologinSite(manifest);
       if (value === "on" && !vault.hasCredential(site)) throw new Error(`请先运行 webcli auth save ${site} 保存账号密码`);
       vault.updateSite(site, { enabled: value === "on" });
       console.log(`✓ ${site} 自动登录已${value === "on" ? "开启" : "关闭"}`);

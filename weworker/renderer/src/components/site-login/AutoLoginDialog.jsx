@@ -5,7 +5,7 @@ import { AUTOLOGIN_NOTICE_LINES, validateCredentialForm } from '../../utils/site
  * Turn on auto-login for one site. The password goes once to the Bridge,
  * which encrypts it with the system key; this component forgets it right away.
  */
-export default function AutoLoginDialog({ site, name, onClose, onSaved }) {
+export default function AutoLoginDialog({ site, name, autologinMode = 'auto', contextId, onClose, onSaved }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
@@ -22,12 +22,15 @@ export default function AutoLoginDialog({ site, name, onClose, onSaved }) {
 
   const save = async (event) => {
     event.preventDefault()
+    if (autologinMode === 'off') { setError('该网站不支持自动登录，请手动完成登录。'); return }
     const problem = validateCredentialForm({ username, password, acknowledged })
     if (problem) { setError(problem); return }
     setSaving(true)
     setError('')
     try {
-      const result = await window.electronAPI.siteAuthControl('save_credential', { site, username, password })
+      const result = await window.electronAPI.siteAuthControl('save_credential', {
+        site, username, password, ...(contextId ? { contextId } : {}),
+      })
       setPassword('')
       onSaved?.(result)
       onClose?.()

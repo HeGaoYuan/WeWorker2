@@ -61,6 +61,15 @@ protocol.registerSchemesAsPrivileged([
       stream: true,
     },
   },
+  {
+    scheme: 'weworker-login-image',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
 ])
 
 const LOCAL_FILE_MIME = {
@@ -91,6 +100,25 @@ function registerLocalFileProtocol() {
           'Cache-Control': 'no-store',
         },
       })
+    } catch {
+      return new Response('not found', { status: 404 })
+    }
+  })
+  protocol.handle('weworker-login-image', async (request) => {
+    try {
+      const url = new URL(request.url)
+      const requested = url.searchParams.get('path')
+      if (!requested) return new Response('missing path', { status: 400 })
+      const root = path.resolve(os.homedir(), '.webcli', 'login')
+      const resolved = path.resolve(requested)
+      const relative = path.relative(root, resolved)
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return new Response('not found', { status: 404 })
+      const ext = path.extname(resolved).toLowerCase()
+      if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) return new Response('not found', { status: 404 })
+      const stat = await fs.promises.stat(resolved)
+      if (!stat.isFile() || stat.size > 5 * 1024 * 1024) return new Response('not found', { status: 404 })
+      const body = await fs.promises.readFile(resolved)
+      return new Response(body, { headers: { 'Content-Type': LOCAL_FILE_MIME[ext], 'Cache-Control': 'no-store' } })
     } catch {
       return new Response('not found', { status: 404 })
     }
@@ -349,7 +377,10 @@ browserClient.onAuthEvent((event) => {
   try {
     lastAuthNotification?.close()
     lastAuthNotification = new Notification({ title: notice.title, body: notice.body })
-    lastAuthNotification.on('click', () => { void browserAction('show') })
+    lastAuthNotification.on('click', () => {
+      const extra = event.contextId ? { browserProfile: event.contextId } : {}
+      void browserClient.authRequest('show_login', { site: event.site, ...extra }).catch((error) => log(`[login] show failed: ${error.message}`))
+    })
     lastAuthNotification.show()
   } catch (error) {
     log(`[login] notification failed: ${error.message}`)

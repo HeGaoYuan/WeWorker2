@@ -1796,6 +1796,11 @@ export class WebSocketBridge extends EventEmitter {
         if (!manifest?.auth) throw new Error(`Adapter "${site}" does not declare a login.`);
         return manifest;
       };
+      const requireAutologin = () => {
+        const manifest = requireSite();
+        if (manifest.auth.autologin?.mode === 'off') throw new Error('该网站不支持自动登录，请使用二维码、动态密码或其他方式手动登录。');
+        return manifest;
+      };
       let result;
       if (action === 'status') {
         let sites = [];
@@ -1808,10 +1813,13 @@ export class WebSocketBridge extends EventEmitter {
         requireSite();
         const waitMs = Number.isFinite(Number(msg.waitMs)) ? Number(msg.waitMs) : DEFAULT_LOGIN_WAIT_MS;
         result = await login.login(site, { waitMs });
+      } else if (action === 'show_login') {
+        requireSite();
+        result = await login.show(site);
       } else if (action === 'cancel') {
         result = { cancelled: login.cancel(site) };
       } else if (action === 'set_autologin') {
-        requireSite();
+        if (msg.enabled === true) requireAutologin(); else requireSite();
         const vault = login.vault;
         if (msg.enabled === true && !vault.hasCredential(site)) throw new Error('请先保存该网站的账号密码。');
         result = vault.updateSite(site, {
@@ -1819,7 +1827,7 @@ export class WebSocketBridge extends EventEmitter {
           ...(msg.dismissed === true ? { dismissed: true } : {}),
         });
       } else if (action === 'save_credential') {
-        requireSite();
+        requireAutologin();
         result = await login.vault.save(site, { username: msg.username, password: msg.password });
       } else if (action === 'forget_credential') {
         requireSite();

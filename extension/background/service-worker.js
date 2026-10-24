@@ -2961,6 +2961,13 @@ async function handleNativeMessage(msg) {
       sendToNative({ type: 'call_tool_error', id: msg.id, error: err.message });
     }
 
+  } else if (msg.type === 'auth_prepare_qr') {
+    try {
+      sendToNative({ type: 'call_tool_result', id: msg.id, result: await prepareSiteQrLogin(msg) });
+    } catch (err) {
+      sendToNative({ type: 'call_tool_error', id: msg.id, error: err.message });
+    }
+
   } else if (msg.type === 'http_credentials') {
     try {
       const result = await readHttpCookies(chrome, msg.payload);
@@ -7343,15 +7350,18 @@ async function checkSiteLogin(msg) {
   const auth = siteAuth(manifest);
   let loginTab = { open: false, url: '', onLoginPage: false };
   const known = siteLoginTabs.get(manifest.name);
-  if (Number.isInteger(known)) {
-    const tab = await chrome.tabs.get(known).catch(() => null);
-    if (tab?.id) {
-      const url = loginTabUrl(manifest, tab);
-      // A page that is still loading (for example right after submitting the form) counts as the login page.
-      loginTab = { open: true, url, onLoginPage: tab.status !== 'complete' || isLoginPageUrl(manifest, url, { root: true }) };
-    } else {
-      siteLoginTabs.delete(manifest.name);
-    }
+  let tab = Number.isInteger(known) ? await chrome.tabs.get(known).catch(() => null) : null;
+  // A Manifest V3 worker can be suspended while the user scans a QR code. Recover
+  // the in-memory site→tab mapping before deciding that the login was cancelled.
+  if (!tab?.id) {
+    tab = await findSiteLoginTab(manifest);
+    if (tab?.id) siteLoginTabs.set(manifest.name, tab.id);
+  }
+  if (tab?.id) {
+    const url = loginTabUrl(manifest, tab);
+    loginTab = { open: true, url, onLoginPage: tab.status !== 'complete' || isLoginPageUrl(manifest, url, { root: true }) };
+  } else {
+    siteLoginTabs.delete(manifest.name);
   }
   let cookies = null;
   let fingerprint = null;
@@ -7363,6 +7373,72 @@ async function checkSiteLogin(msg) {
     fingerprint = cookieFingerprint(spec, jar);
   }
   return { loginTab, cookies, ...(fingerprint ? { fingerprint } : {}) };
+}
+
+/**
+ * Prepare a declared login page for QR display without filling or submitting
+ * credentials. This deliberately only clicks an explicit login-method switch
+ * such as “扫码登录”; all other login actions remain user-controlled.
+ */
+async function prepareSiteQrLogin(msg) {
+  const manifest = await managedSiteManifest(msg.site);
+  if (manifest.auth?.qr?.mode === 'off') return { available: false, skipped: true };
+  const known = siteLoginTabs.get(manifest.name);
+  const tab = Number.isInteger(known)
+    ? await chrome.tabs.get(known).catch(() => null)
+    : await findSiteLoginTab(manifest);
+  if (!tab?.id || !isLoginPageUrl(manifest, loginTabUrl(manifest, tab), { root: true })) {
+    return { available: false, reason: 'LOGIN_TAB_UNAVAILABLE' };
+  }
+  const [{ result } = {}] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    world: 'ISOLATED',
+    func: async () => {
+      const visible = (element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0 && rect.width > 0 && rect.height > 0;
+      };
+      const textOf = (element) => `${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''} ${element.textContent || ''}`.replace(/\s+/g, ' ').trim();
+      const hintOf = (element) => `${textOf(element)} ${element.id || ''} ${element.className?.baseVal || element.className || ''}`.replace(/\s+/g, ' ').trim();
+      const findQrElement = () => [...document.querySelectorAll('img, canvas, svg')].find((element) => {
+        if (!visible(element)) return false;
+        const rect = element.getBoundingClientRect();
+        return /(?:qr|qrcode|二维码|扫码|scan)/i.test(hintOf(element)) && rect.width >= 80 && rect.height >= 80;
+      });
+      const qrState = () => {
+        const element = findQrElement();
+        if (!element) return { available: false };
+        let imageDataUrl = '';
+        try {
+          if (element instanceof HTMLImageElement && /^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(element.currentSrc || element.src || '')) {
+            imageDataUrl = element.currentSrc || element.src;
+          } else if (element instanceof HTMLCanvasElement) {
+            imageDataUrl = element.toDataURL('image/png');
+          }
+        } catch { /* A tainted canvas still has a visible page-screenshot fallback. */ }
+        return { available: true, ...(imageDataUrl.length <= 2_800_000 ? { imageDataUrl } : {}) };
+      };
+      const currentQr = qrState();
+      if (currentQr.available) return { ...currentQr, clicked: false };
+      const commonSwitches = document.querySelectorAll('#switcher_qlogin, .qrcode_switch, [data-action*="qr" i], [data-testid*="qr" i]');
+      const semanticSwitches = document.querySelectorAll('button, [role="button"], [role="tab"], a, input[type="button"]');
+      const candidates = [...new Set([...commonSwitches, ...semanticSwitches])]
+        .filter(visible)
+        .map((element) => ({ element, hint: hintOf(element) }))
+        .filter(({ hint }) => /(?:扫码登录|二维码登录|扫描二维码|扫码|qrcode|qr\s*code|scan\s*(?:qr|code))/i.test(hint))
+        .filter(({ hint }) => !/(?:确认|提交|授权|注册|密码登录|短信登录|找回密码|sign\s*in|submit|authorize)/i.test(hint));
+      if (candidates.length !== 1) return { available: false, clicked: false, reason: candidates.length ? 'AMBIGUOUS_QR_ENTRY' : 'QR_ENTRY_NOT_FOUND' };
+      candidates[0].element.click();
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const nextQr = qrState();
+        if (nextQr.available) return { ...nextQr, clicked: true };
+      }
+      return { available: false, clicked: true };
+    },
+  });
+  return result && typeof result === 'object' ? result : { available: false, reason: 'QR_PREPARE_FAILED' };
 }
 
 // ─── 用户 adapter 目录访问（经 bridge 代理）─────────────────────────────────

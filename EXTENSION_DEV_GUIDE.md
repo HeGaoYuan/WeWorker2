@@ -472,17 +472,23 @@ v2 包的页面命令只能在声明的网站范围内运行和跳转；跳到�
     "cookies": { "url": "https://www.example.com/", "all": ["session_id"] },
     "command": "whoami"
   },
-  "autologin": { "switch": "#tab-password", "submit": "button[type=submit]" }
+  "autologin": {
+    "mode": "auto",
+    "switch": "#tab-password",
+    "submit": "button[type=submit]"
+  }
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
-| `login_url` | 必填。打开登录时使用的页面（HTTPS）；主机必须在 `match`、`domains`、`runtime_allowed_hosts` 或 `login_hosts` 中 |
+| `login_url` | 必填。打开登录时使用的 HTTP(S) 页面；主机必须在 `match`、`domains`、`runtime_allowed_hosts` 或 `login_hosts` 中。HTTP 仅适用于用户受信任的内网登录页；账号密码自动填写仍只允许 HTTPS 页面 |
 | `login_hosts` | 可选。只用于登录的主机，例如 SSO 认证中心 `sso.example.com`、`passport.example.com`。命令页面被重定向到这些主机即判定为「需要登录」 |
 | `check.cookies` | 可选，最快。`url` 下的 Cookie 满足 `all`（全部存在）/ `any`（任一存在）/ `equals`（值相等）/ `not`（值不等）即视为已登录 |
 | `check.command` | 可选。本包的一个只读 Extension 命令（例如 `whoami`）。返回 `logged_in: false` 或抛出 `AUTH_REQUIRED` 表示未登录，其他成功结果表示已登录 |
-| `autologin` | 可选。通用表单识别不准时，给自动登录提供 CSS 选择器：`switch`（先点击切换到「账号密码登录」）、`username`、`password`、`submit` |
+| `auth.qr.mode` | 可选，`auto` / `off`，默认 `auto`。`auto` 由宿主尝试通用二维码发现；`off` 完全跳过二维码逻辑，直接进入人工登录 |
+| `autologin.mode` | 可选，`auto` / `off`，默认 `auto`。`auto` 表示站点允许用户保存密码并由 WeWorker 自动填写；`off` 表示动态密码、一次性口令或站点策略不允许自动登录，桌面端和 CLI 均不提供保存/启用入口 |
+| `autologin.switch/username/password/submit` | 可选。`auto` 模式下通用表单识别不准时，提供 CSS 选择器：`switch`（先点击切换到账号密码登录）、`username`、`password`、`submit` |
 | `display_name` | 可选。登录提示中显示的名称，默认取 `i18n.zh.name` |
 | 命令级 `auth` | 可选，`required`（默认）/ `optional` / `none`。`none` 的命令失败时不触发登录检查 |
 
@@ -500,11 +506,11 @@ window.__webmcpWecliRuntime.authRequired('会话已过期');
 2. Adapter 抛出 `AUTH_REQUIRED`，或运行时 helper 收到 HTTP 401；
 3. 命令失败且声明了 `check`：宿主运行一次检查，确认未登录。
 
-**登录流程**：打开（或复用被重定向的）登录页 → 约 2 秒内若会话仍有效会自动跳走，直接继续 → 若开启了自动登录则先尝试 → 否则显示 WeWorker 浏览器，用户扫码、输入短信验证码或账号密码 → 宿主根据 `check` 与「离开登录页」判断完成 → 自动隐藏浏览器并**重试一次**。重试规则：只读命令总会重试；写命令只有在业务代码运行前被拦下（页面重定向到登录页）才会重试，否则返回 `AUTH_RETRY_REQUIRED`，由用户确认后重新执行，绝不重放写操作。
+**登录流程**：打开（或复用被重定向的）登录页 → 约 2 秒内若会话仍有效会自动跳走，直接继续 → 若开启了自动登录则先尝试 → 否则在后台准备二维码/登录页并向桌面端提示，用户点击“显示浏览器”时才将对应登录 Tab 切到前台 → 宿主根据 `check` 与「离开登录页」判断完成 → 自动隐藏用户曾显示的专用浏览器并**重试一次**。重试规则：只读命令总会重试；写命令只有在业务代码运行前被拦下（页面重定向到登录页）才会重试，否则返回 `AUTH_RETRY_REQUIRED`，由用户确认后重新执行，绝不重放写操作。
 
-**扫码与短信验证码**：不需要 Adapter 做任何事。完成登录始终发生在真实登录页上，宿主只关心「是否已登录」，与登录方式无关；扫码页会额外保存截图（`~/.webcli/login/<adapter>.jpg`，每 15 秒刷新），方便不在电脑前的用户扫码。
+**扫码与短信验证码**：二维码发现默认开启，普通 Adapter 无需声明 `auth.qr`。宿主只在该 Adapter 已验证的登录页内尝试一次通用发现：先查找可见二维码，再尝试点击唯一、明确的扫码登录方式切换控件，并优先提取二维码独立图片。通用规则覆盖可见文本、无障碍名称、`id/class` 和常见结构（包括 `#switcher_qlogin`、`.qrcode_switch`、`img.qrcode`）；不会填写表单或点击确认、授权、提交等按钮。找到二维码后桌面端显示并定期刷新；找不到时不展示整页截图，只提示用户打开浏览器手动登录。明确不支持二维码或不适合自动探测的网站可声明 `"qr": { "mode": "off" }`。复杂网站未来可通过 `auth.qr.command` 提供精确获取逻辑；该扩展点尚未实现，当前校验器不会接受 `command`。
 
-**自动登录**（默认关闭，按网站由用户开启）：密码用系统密钥加密保存在本机（目前支持 Windows DPAPI），只有 Bridge 在填写前解密，通过 CDP 可信输入填入 HTTPS 登录页；Adapter、扩展、Backend 与模型都拿不到明文。遇到验证码、二次验证、仅扫码/短信的登录页或密码错误时自动转为人工，并在 10 分钟内不再重试。
+**自动登录**：`auth.autologin.mode` 是站点能力策略，不是用户开关。未配置或 `auto` 表示该站允许自动登录，但用户仍须主动保存密码并开启；`off` 表示该站使用动态密码、一次性口令或明确禁止凭据自动填写。`off` 时宿主不会读取/填写保存的密码，不会推荐开启，Bridge 和 CLI 拒绝保存或启用，桌面设置隐藏更新密码和开关；手动登录、二维码、短信验证码、`auth.check` 与任务恢复完全不受影响。`auto` 模式下密码用系统密钥加密保存在本机（目前支持 Windows DPAPI），只有 Bridge 在填写前解密，并且只在该网站声明的 HTTPS 登录页通过 CDP 可信输入；Adapter、扩展、Backend 与模型都拿不到明文。
 
 **验证**：`webcli auth check <adapter>` 运行你声明的检查；`webcli login <adapter>` 走一遍完整登录流程；`webcli adapter validate <dir>` 校验 `auth` 字段。
 
