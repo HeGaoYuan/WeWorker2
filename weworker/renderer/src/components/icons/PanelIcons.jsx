@@ -1,3 +1,5 @@
+import React from 'react'
+
 /** Small UI icons for panels (not site/registry icons). */
 
 export function RestoreWindowIcon({ size = 12 }) {
@@ -130,6 +132,7 @@ export function FolderPlusIcon({ size = 16 }) {
     </svg>
   )
 }
+
 
 export function CollapseAllIcon({ size = 16 }) {
   return (

@@ -60,9 +60,7 @@ export const SKILL_MODES = {
 /** Status pill for an agent: combines enabled flag, pairing and the WeCom connection. */
 export function agentStatusPresentation(agent) {
   if (!agent) return { label: '未知', tone: 'muted' }
-  if (agent.draft) return agent.paired
-    ? { label: '已配置', tone: 'success' }
-    : { label: '未配置', tone: 'muted' }
+  if (agent.draft) return { label: '未配置', tone: 'muted' }
   if (!agent.enabled) return { label: '已停用', tone: 'muted' }
   const status = agent.connection?.status
   if (status === 'error') {

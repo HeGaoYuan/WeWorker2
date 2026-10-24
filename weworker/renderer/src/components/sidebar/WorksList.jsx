@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useWorksStore } from '../../store/works.js'
 import { useToolPackagePageStore } from '../../store/tool-package-page.js'
 import { showAlert, showConfirm } from '../../store/dialog.js'
+import { TrashIcon } from '../icons/PanelIcons.jsx'
+import MessageSquarePlusIcon from '../icons/MessageSquarePlusIcon.jsx'
 
 const LABEL_COLORS = {
   red: '#ef4444',
@@ -81,7 +83,7 @@ export default function WorksList({ searchQuery = '' }) {
       return {}
     }
   })
-  const [hoveredFolderId, setHoveredFolderId] = useState(null)
+  const [hoveredFolderKey, setHoveredFolderKey] = useState(null)
   const [renamingProjectId, setRenamingProjectId] = useState(null)
   const [renameProjectValue, setRenameProjectValue] = useState('')
   const renameProjectInputRef = useRef(null)
@@ -107,7 +109,7 @@ export default function WorksList({ searchQuery = '' }) {
   if (!works.length && !projects.length) {
     return (
       <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 12 }}>
-        No works yet. Click + to start.
+        暂无对话
       </div>
     )
   }
@@ -189,8 +191,8 @@ export default function WorksList({ searchQuery = '' }) {
           <section
             className={`work-folder-group${collapsed ? ' is-collapsed' : ''}`}
             key={folderKey}
-            onMouseEnter={() => setHoveredFolderId(group.id)}
-            onMouseLeave={() => setHoveredFolderId(null)}
+            onMouseEnter={() => setHoveredFolderKey(folderKey)}
+            onMouseLeave={() => setHoveredFolderKey(null)}
           >
             <div className="work-folder-heading">
               <button
@@ -220,19 +222,21 @@ export default function WorksList({ searchQuery = '' }) {
                 )}
                 <span className="work-folder-heading__count">{group.items.length}</span>
               </button>
-              {group.id && !renaming && (hoveredFolderId === group.id || group.items.length === 0) && (
+              {!renaming && (hoveredFolderKey === folderKey || group.items.length === 0) && (
                 <span className="work-folder-heading__actions">
                   {/* 专属 Agent 的对话只在 Agent 页里创建，侧栏不提供入口。 */}
                   {!group.dedicatedAgent && (
-                    <button type="button" title="项目中创建新对话" aria-label={`在${group.name}中创建新对话`} onClick={() => createProjectWork(group.id)}>
-                      <ProjectPlusIcon />
+                    <button type="button" title={group.id ? '项目中创建新对话' : '默认工作区中创建新对话'} aria-label={`在${group.name}中创建新对话`} onClick={() => createProjectWork(group.id)}>
+                      <MessageSquarePlusIcon />
                     </button>
                   )}
-                  <button type="button" title={group.items.length ? '请先删除项目中的对话' : '删除项目'} aria-label={`删除项目${group.name}`} disabled={group.items.length > 0} onClick={() => handleDeleteProject(group)}>
-                    <ProjectTrashIcon />
-                  </button>
+                  {group.id && (
+                    <button type="button" title={group.items.length ? '请先删除项目中的对话' : '删除项目'} aria-label={`删除项目${group.name}`} disabled={group.items.length > 0} onClick={() => handleDeleteProject(group)}>
+                      <ProjectTrashIcon />
+                    </button>
+                  )}
                   {/* 专属 Agent 文件夹名由 Agent 名称生成，只能改名 Agent 来同步。 */}
-                  {!group.dedicatedAgent && (
+                  {group.id && !group.dedicatedAgent && (
                     <button type="button" title="重命名项目" aria-label={`重命名项目${group.name}`} onClick={() => startProjectRename(group)}>
                       <RenameIcon size={12} />
                     </button>
@@ -274,15 +278,6 @@ function FolderIcon({ size = 15 }) {
   )
 }
 
-function ProjectPlusIcon({ size = 13 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-9.5a2 2 0 0 1 2-2Z" />
-      <path d="M15 11v5M12.5 13.5h5" />
-    </svg>
-  )
-}
-
 function ProjectTrashIcon({ size = 13 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -310,6 +305,20 @@ function WorkItem({ work, active, onSelect, onDelete }) {
   const menuRef = useRef(null)
   const renameInputRef = useRef(null)
   const skipRenameCommitRef = useRef(false)
+  const deletePendingRef = useRef(false)
+
+  const handleDelete = async () => {
+    if (deletePendingRef.current) return
+    deletePendingRef.current = true
+    try {
+      if (!await showConfirm(`确定删除对话“${work.title || '新任务'}”吗？删除后无法恢复。`, '删除对话')) return
+      await onDelete()
+    } catch {
+      // The store displays the deletion error and preserves the conversation.
+    } finally {
+      deletePendingRef.current = false
+    }
+  }
 
   const handleContextMenu = useCallback((e) => {
     e.preventDefault()
@@ -471,10 +480,10 @@ function WorkItem({ work, active, onSelect, onDelete }) {
               title="删除"
               aria-label={`删除 ${work.title || '新任务'}`}
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onDelete() }}
-              style={{ ...workActionButtonStyle, fontSize: 12 }}
+              onClick={(e) => { e.stopPropagation(); handleDelete() }}
+              style={workActionButtonStyle}
             >
-              ✕
+              <TrashIcon size={13} />
             </button>
           </span>
         )}

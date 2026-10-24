@@ -60,6 +60,7 @@ export const useScheduledTasksStore = create((set, get) => ({
       body: JSON.stringify(updates),
     })
     const updated = await res.json()
+    if (!res.ok) throw new Error(updated.error || updated.detail || '更新定时任务失败，请重试')
     set((s) => ({
       tasks: s.tasks.map((t) => (t.id === id ? updated : t)),
     }))
@@ -67,7 +68,11 @@ export const useScheduledTasksStore = create((set, get) => ({
   },
 
   deleteTask: async (id) => {
-    await backendFetch(`/scheduled-tasks/${id}`, { method: 'DELETE' })
+    const res = await backendFetch(`/scheduled-tasks/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}))
+      throw new Error(error.error || error.detail || '删除定时任务失败，请重试')
+    }
     set((s) => {
       const tasks = s.tasks.filter((t) => t.id !== id)
       const executions = { ...s.executions }

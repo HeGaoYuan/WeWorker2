@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { fetchRouterAliases, fetchSites, setWelcomeVisibility } from '../api/sites-api.js'
+import { fetchRouterAliases, fetchSites } from '../api/sites-api.js'
 import { backendFetch } from '../api/http.js'
 
 const API = 'http://127.0.0.1:8765'
@@ -39,22 +39,6 @@ export const useSitesStore = create((set) => ({
       set({ sites, systemTools, routerAliases, loading: false })
     } catch {
       set({ loading: false })
-    }
-  },
-
-  setAllWelcomeVisibility: async (visible) => {
-    const targetVisible = visible === true
-    const enabledIds = useSitesStore.getState().sites.filter((s) => s.enabled).map((s) => s.id)
-    set((s) => ({
-      sites: s.sites.map((site) =>
-        site.enabled ? { ...site, visible: targetVisible } : site
-      ),
-    }))
-    try {
-      await setWelcomeVisibility(targetVisible, enabledIds)
-      await reloadSites(set)
-    } catch {
-      await reloadSites(set)
     }
   },
 
