@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { DropdownMenuPortal } from '../common/DropdownMenuPortal.jsx'
+import { FormOutlined } from '@ant-design/icons'
+import TablerFolderPlusIcon, { TablerPlusIcon } from '../icons/TablerFolderPlusIcon.jsx'
 import WorksList, { LABEL_COLORS, LABEL_OPTIONS } from '../sidebar/WorksList.jsx'
 import ScheduledTasksList from '../sidebar/ScheduledTasksList.jsx'
 import Tooltip from '../Tooltip.jsx'
@@ -16,19 +17,13 @@ export default function Sidebar({ section, collapsed, width }) {
   const loadWorks = useWorksStore((s) => s.loadWorks)
   const createTask = useScheduledTasksStore((s) => s.createTask)
   const loadTasks = useScheduledTasksStore((s) => s.loadTasks)
-  const activeTaskId = useScheduledTasksStore((s) => s.activeTaskId)
-  const toolPackageOpen = useToolPackagePageStore((s) => s.open)
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
-  const [showNewMenu, setShowNewMenu] = useState(false)
   const [showProjectDialog, setShowProjectDialog] = useState(false)
   const [projectName, setProjectName] = useState('')
   const projectNameInputRef = useRef(null)
   const [showLabelFilter, setShowLabelFilter] = useState(false)
   const labelFilterRef = useRef(null)
-  const newMenuRef = useRef(null)
-  const newMenuPortalRef = useRef(null)
-  const newMenuTriggerRef = useRef(null)
   const hasLabeled = useWorksStore((s) => (Array.isArray(s.works) ? s.works : []).some((w) => w.label))
   const labelFilter = useWorksStore((s) => s.labelFilter)
   const setLabelFilter = useWorksStore((s) => s.setLabelFilter)
@@ -47,17 +42,6 @@ export default function Sidebar({ section, collapsed, width }) {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [showLabelFilter])
-
-  useEffect(() => {
-    if (!showNewMenu) return undefined
-    const close = (event) => {
-      if (newMenuRef.current?.contains(event.target)) return
-      if (newMenuPortalRef.current?.contains(event.target)) return
-      setShowNewMenu(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [showNewMenu])
 
   useEffect(() => {
     if (!showProjectDialog || !projectNameInputRef.current) return
@@ -82,7 +66,6 @@ export default function Sidebar({ section, collapsed, width }) {
     if (!await leaveWebsiteExploration()) return
     useExplorationPageStore.getState().closePage()
     useToolPackagePageStore.getState().closePage()
-    setShowNewMenu(false)
     await createWork({ forceNew: true, projectId: null })
   }
 
@@ -90,7 +73,6 @@ export default function Sidebar({ section, collapsed, width }) {
     if (!await leaveWebsiteExploration()) return
     useExplorationPageStore.getState().closePage()
     useToolPackagePageStore.getState().closePage()
-    setShowNewMenu(false)
     setProjectName('')
     setShowProjectDialog(true)
   }
@@ -125,14 +107,14 @@ export default function Sidebar({ section, collapsed, width }) {
     if (!state.activeTaskId && state.tasks[0]?.id) state.selectTask(state.tasks[0].id)
   }
 
-  const worksSectionActive = section === 'conversation' && !toolPackageOpen && !activeTaskId
-  const tasksSectionActive = section === 'tasks' && !toolPackageOpen
 
   return (
     <>
     <div className="workspace-sidebar" style={{
       width: collapsed ? 0 : width,
       minWidth: collapsed ? 0 : width,
+      borderRightWidth: collapsed ? 0 : undefined,
+      visibility: collapsed ? 'hidden' : 'visible',
       background: 'var(--bg-secondary)',
       display: 'flex',
       flexDirection: 'column',
@@ -143,6 +125,15 @@ export default function Sidebar({ section, collapsed, width }) {
     }}>
       {section === 'conversation' && (
       <div className="sidebar-task-section" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <button
+          type="button"
+          className="sidebar-new-chat sidebar-conversation-action"
+          data-weworker-new-work="true"
+          onClick={handleCreateWork}
+        >
+          <FormOutlined aria-hidden="true" />
+          <span>新对话</span>
+        </button>
         <div className="sidebar-conversation-header" style={{
           padding: '10px 12px 4px',
           display: 'flex',
@@ -154,11 +145,7 @@ export default function Sidebar({ section, collapsed, width }) {
           <button
             type="button"
             onClick={handleOpenWorksSection}
-            className="sidebar-section-heading"
-            style={{
-              ...sidebarSectionButtonStyle,
-              color: worksSectionActive ? 'var(--text-primary)' : 'var(--text-muted)',
-            }}
+            className="sidebar-section-heading sidebar-conversation-action"
           >
             <WorksNavIcon size={13} />
             <span>对话</span>
@@ -169,17 +156,11 @@ export default function Sidebar({ section, collapsed, width }) {
               <div ref={labelFilterRef} style={{ position: 'relative' }}>
               <Tooltip text="按标记筛选">
                 <button
+                  type="button"
+                  className="sidebar-icon-button"
+                  aria-label="按标记筛选"
                   onClick={() => setShowLabelFilter((v) => !v)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: labelFilter ? LABEL_COLORS[labelFilter] : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    lineHeight: 1,
-                    padding: '2px 4px',
-                    borderRadius: 4,
-                  }}
+                  style={labelFilter ? { color: LABEL_COLORS[labelFilter] } : undefined}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill={labelFilter ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
@@ -227,19 +208,13 @@ export default function Sidebar({ section, collapsed, width }) {
                 )}
               </div>
             )}
-            <Tooltip text="搜索任务">
+            <Tooltip text="搜索对话">
               <button
+                type="button"
+                className={`sidebar-icon-button${showSearch ? ' is-active' : ''}`}
+                aria-label="搜索对话"
+                aria-expanded={showSearch}
                 onClick={() => { setShowSearch((v) => !v); if (showSearch) setSearchQuery('') }}
-                style={{
-                background: 'none',
-                border: 'none',
-                color: showSearch ? 'var(--text-primary)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontSize: 14,
-                lineHeight: 1,
-                padding: '2px 4px',
-                borderRadius: 4,
-              }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/>
@@ -247,54 +222,16 @@ export default function Sidebar({ section, collapsed, width }) {
               </svg>
             </button>
             </Tooltip>
-            <div ref={newMenuRef} style={{ position: 'relative' }}>
-              <Tooltip text="新建对话或项目">
+              <Tooltip text="新项目">
                 <button
                   type="button"
-                  ref={newMenuTriggerRef}
-                  data-weworker-new-work="true"
-                  aria-haspopup="menu"
-                  aria-expanded={showNewMenu}
-                  onClick={() => setShowNewMenu((current) => !current)}
-                  style={{
-                    WebkitAppRegion: 'no-drag',
-                    background: showNewMenu ? 'var(--bg-hover)' : 'none',
-                    border: 'none',
-                    color: showNewMenu ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontSize: 20,
-                    lineHeight: 1,
-                    padding: '2px 4px',
-                    borderRadius: 4,
-                  }}
+                  className="sidebar-new-project sidebar-icon-button"
+                  aria-label="新项目"
+                  onClick={handleCreateProject}
                 >
-                  +
+                  <TablerFolderPlusIcon />
                 </button>
               </Tooltip>
-              <DropdownMenuPortal
-                ref={newMenuPortalRef}
-                open={showNewMenu}
-                anchorRef={newMenuTriggerRef}
-                minWidth={214}
-                align="end"
-                offsetY={6}
-                zIndex={5000}
-                className="sidebar-new-menu"
-              >
-                <div role="menu">
-                  <button type="button" role="menuitem" onClick={handleCreateWork}>
-                    <NewConversationIcon />
-                    <span>新对话</span>
-                    <small>默认工作区</small>
-                  </button>
-                  <button type="button" role="menuitem" onClick={handleCreateProject}>
-                    <NewProjectIcon />
-                    <span>新项目</span>
-                    <small>创建项目文件夹</small>
-                  </button>
-                </div>
-              </DropdownMenuPortal>
-            </div>
           </div>
         </div>
         {showSearch && (
@@ -328,43 +265,23 @@ export default function Sidebar({ section, collapsed, width }) {
 
       {section === 'tasks' && (
       <div className="sidebar-scheduled-section" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <div style={{
-          padding: '8px 12px 4px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          WebkitAppRegion: 'no-drag',
-        }}>
+        <div className="sidebar-section-header">
           <button
             type="button"
             onClick={handleOpenTasksSection}
-            className="sidebar-section-heading"
-            style={{
-              ...sidebarSectionButtonStyle,
-              color: tasksSectionActive ? 'var(--text-primary)' : 'var(--text-muted)',
-            }}
+            className="sidebar-section-heading sidebar-section-label"
           >
             <ScheduledNavIcon size={13} />
             <span>定时任务</span>
           </button>
           <Tooltip text="新定时任务">
             <button
+              type="button"
+              className="sidebar-icon-button"
+              aria-label="新定时任务"
               onClick={handleCreateTask}
-              style={{
-              WebkitAppRegion: 'no-drag',
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: 20,
-              lineHeight: 1,
-              padding: '2px 4px',
-              borderRadius: 4,
-            }}
-            onMouseEnter={(e) => (e.target.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.target.style.color = 'var(--text-secondary)')}
           >
-            +
+            <TablerPlusIcon />
           </button>
           </Tooltip>
         </div>
@@ -444,39 +361,6 @@ function ScheduledNavIcon({ size = 15 }) {
       <path d="M12 7v5l3 2" />
     </svg>
   )
-}
-
-function NewConversationIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 3v-3H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" />
-      <path d="M12 9v5M9.5 11.5h5" />
-    </svg>
-  )
-}
-
-function NewProjectIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-9.5a2 2 0 0 1 2-2Z" />
-      <path d="M12 11v5M9.5 13.5h5" />
-    </svg>
-  )
-}
-
-const sidebarSectionButtonStyle = {
-  border: 'none',
-  background: 'none',
-  padding: 0,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  WebkitAppRegion: 'no-drag',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  fontSize: 11,
-  fontWeight: 600,
-  textAlign: 'left',
 }
 
 const projectDialogButtonStyle = {

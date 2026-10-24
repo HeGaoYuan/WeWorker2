@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect } from 'react'
 import { Alert, Button } from 'antd'
 import { PlusOutlined, RobotOutlined } from '@ant-design/icons'
 import { useDedicatedAgentsStore } from '../../store/dedicated-agents.js'
 import { useSitesStore } from '../../store/sites.js'
 import SiteIcon from '../icons/SiteIcon.jsx'
+import { TablerPlusIcon } from '../icons/TablerFolderPlusIcon.jsx'
+import Tooltip from '../Tooltip.jsx'
 import { agentStatusPresentation, TONE_COLORS } from '../../utils/dedicated-agents.js'
 import AgentCreateWizard from './AgentCreateWizard.jsx'
 import AgentDetail from './AgentDetail.jsx'
@@ -27,39 +29,29 @@ const listNameInputStyle = {
 
 function AgentListItem({ agent, site, active, onSelect, onRenamed }) {
   const status = agentStatusPresentation(agent)
-  const [hovered, setHovered] = useState(false)
   return (
     <div
       role="button"
       tabIndex={0}
-      className={`work-list-item${active ? ' is-active' : ''}`}
+      className={`work-list-item sidebar-detail-item${active ? ' is-active' : ''}`}
       onClick={onSelect}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() }
       }}
       aria-current={active ? 'true' : undefined}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: 'calc(100% - 12px)', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6,
-        padding: '7px 12px', margin: '1px 6px', borderRadius: 6,
-        border: 'none', cursor: 'pointer', background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-        color: active ? 'var(--text-primary)' : 'var(--text-secondary)', fontFamily: 'inherit', textAlign: 'left',
-        transition: 'background 0.16s ease, color 0.16s ease',
-      }}
     >
       <SiteIcon site={site || { id: agent.site_id, name: agent.site_id }} size={18} />
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <AgentNameEditor
           agentId={agent.id}
           name={agent.name}
+          onSave={agent.draft && agent.id.startsWith('draft-') ? async (name) => ({ ...agent, name }) : undefined}
           onSaved={onRenamed}
-          disabled={agent.draft}
           iconSize={11}
-          textStyle={{ fontSize: 12, fontWeight: active ? 600 : 500 }}
+          textStyle={{ fontSize: 12, fontWeight: 400, lineHeight: '18px' }}
           inputStyle={listNameInputStyle}
         />
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: TONE_COLORS[status.tone] }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, lineHeight: '15px', color: TONE_COLORS[status.tone] }}>
           <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: TONE_COLORS[status.tone] }} />
           {status.label}
         </span>
@@ -117,18 +109,23 @@ export default function DedicatedAgentsPage({ sidebarWidth }) {
 
   const siteById = new Map(sites.map((site) => [site.id, site]))
   const showDetail = view === 'detail' && selectedId && agents.some((agent) => agent.id === selectedId)
+  const activeDraft = agents.find((agent) => agent.draft && agent.id === selectedId)
 
   return (
     <div style={pageStyle}>
       <div style={{ ...listColumnStyle, width: sidebarWidth, minWidth: sidebarWidth }}>
-        <div className="sidebar-conversation-header" style={{ padding: '10px 12px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 11, fontWeight: 600 }}>
+        <div className="sidebar-section-header">
+          <div className="sidebar-section-label">
             <RobotOutlined aria-hidden="true" />
             <span>专属 Agent</span>
           </div>
-          <Button size="small" type="text" icon={<PlusOutlined />} onClick={startCreate} aria-label="新建专属 Agent" />
+          <Tooltip text="新建专属 Agent">
+            <button type="button" className="sidebar-icon-button" onClick={startCreate} aria-label="新建专属 Agent">
+              <TablerPlusIcon />
+            </button>
+          </Tooltip>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px 10px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0 10px' }}>
           {loadError && <Alert type="error" showIcon message={loadError} style={{ margin: 4 }} />}
           {loaded && !agents.length && !loadError && <div style={{ ...hintStyle, padding: '8px 12px' }}>还没有专属 Agent</div>}
           {agents.map((agent) => (
@@ -149,7 +146,7 @@ export default function DedicatedAgentsPage({ sidebarWidth }) {
         </div>
       ) : (
         <div style={contentStyle}>
-          {view === 'create' && <AgentCreateWizard />}
+          {view === 'create' && activeDraft && <AgentCreateWizard key={activeDraft.draftKey || activeDraft.id} draftKey={activeDraft.draftKey || activeDraft.id} />}
           {view !== 'create' && <Intro onCreate={startCreate} hasAgents={agents.length > 0} />}
         </div>
       )}

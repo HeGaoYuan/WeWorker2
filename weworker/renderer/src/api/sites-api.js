@@ -106,32 +106,6 @@ export async function fetchRouterAliases() {
   return Array.isArray(body?.aliases) ? body.aliases.filter((alias) => typeof alias === 'string') : []
 }
 
-/** Bulk welcome visibility; falls back to per-site calls on older backends. */
-export async function setWelcomeVisibility(visible, enabledSiteIds) {
-  const targetVisible = visible === true
-  const applyPerSite = () =>
-    Promise.all(
-      enabledSiteIds.map((id) =>
-        backendFetch(`${API}/sites/${encodeURIComponent(id)}/visibility`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visible: targetVisible }),
-        }),
-      ),
-    )
-
-  try {
-    const res = await backendFetch(`${API}/sites/welcome-visibility`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visible: targetVisible }),
-    })
-    if (!res.ok) await applyPerSite()
-  } catch {
-    await applyPerSite()
-  }
-}
-
 export async function updateSiteScenario(siteId, scenarioId, patch) {
   let res
   try {
