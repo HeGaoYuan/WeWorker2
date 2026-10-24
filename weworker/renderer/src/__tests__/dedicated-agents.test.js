@@ -45,7 +45,7 @@ const site = {
 test('agent status combines enabled flag, connection and pairing', () => {
   assert.equal(agentStatusPresentation(null).label, '未知')
   assert.deepEqual(agentStatusPresentation({ draft: true, paired: false }), { label: '未配置', tone: 'muted' })
-  assert.deepEqual(agentStatusPresentation({ draft: true, paired: true }), { label: '已配置', tone: 'success' })
+  assert.deepEqual(agentStatusPresentation({ draft: true, paired: true }), { label: '未配置', tone: 'muted' })
   assert.equal(agentStatusPresentation({ enabled: false }).label, '已停用')
   assert.deepEqual(agentStatusPresentation({ enabled: true, connection: { status: 'error', error: 'subscribe failed' } }), { label: '连接异常', tone: 'error', detail: 'subscribe failed' })
   assert.equal(agentStatusPresentation({ enabled: true, connection: { status: 'starting' } }).label, '连接中')

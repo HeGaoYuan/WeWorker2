@@ -853,7 +853,7 @@ export default function WelcomeScreen({ onFillInput }) {
   return (
     <div ref={welcomeScrollRef} data-welcome-scroll style={welcomeScrollStyle}>
       <section ref={sectionRef} style={welcomeSectionStyle}>
-        <header style={{ textAlign: 'center' }}>
+        <header className="welcome-introduction" style={{ textAlign: 'center' }}>
           <h1 style={{ fontSize: 28, fontWeight: 760, marginBottom: 6 }}>WeWorker</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: 15, margin: 0 }}>
             像聊天一样操作网站，选择一个场景就能开始。
@@ -921,7 +921,7 @@ export default function WelcomeScreen({ onFillInput }) {
         </div>
         )}
 
-        <div style={featuredHeaderStyle}>
+        <div className="welcome-featured-toolbar" style={featuredHeaderStyle}>
           <div style={featuredHeaderTitleRowStyle}>
             <span>常用场景</span>
             <button

@@ -5,7 +5,7 @@ import { useScheduledTasksStore } from '../../store/scheduled-tasks.js'
 import { useWorksStore } from '../../store/works.js'
 import { useSettingsStore } from '../../store/settings.js'
 import { backendFetch } from '../../api/http.js'
-import { showConfirm } from '../../store/dialog.js'
+import { showAlert, showConfirm } from '../../store/dialog.js'
 
 // ---------------------------------------------------------------------------
 // Schedule helpers — convert between user-friendly fields and cron expression
@@ -198,11 +198,13 @@ export default function TaskConfigView({ taskId }) {
   // Sync form state when task changes
   useEffect(() => {
     if (!task) return
-    setTitle(task.title || '')
     setSchedule(parseCron(task.cron_expression))
     setPromptTemplate(task.prompt_template || '')
     setNotifyChannels(task.notify_channels || [])
   }, [task?.id])
+
+  // A sidebar rename must update the title without resetting other unsaved fields.
+  useEffect(() => { setTitle(task?.title || '') }, [task?.id, task?.title])
 
   const cronExpression = useMemo(() => buildCron(schedule), [schedule])
   const nextRunsHint = useMemo(() => nextRunsSummary(schedule), [schedule])
@@ -241,7 +243,8 @@ export default function TaskConfigView({ taskId }) {
   }
 
   const handleToggleEnabled = async () => {
-    await updateTask(taskId, { enabled: !task.enabled })
+    try { await updateTask(taskId, { enabled: !task.enabled }) }
+    catch (error) { showAlert(error.message || '更新定时任务失败，请重试') }
   }
 
   const handleDelete = async () => {
@@ -249,7 +252,10 @@ export default function TaskConfigView({ taskId }) {
       `确定要删除任务「${task.title || '未命名任务'}」吗？\n\n这将同时删除该任务的所有执行记录，此操作不可撤销。`,
       '删除定时任务',
     )
-    if (confirmed) await deleteTask(taskId)
+    if (confirmed) {
+      try { await deleteTask(taskId) }
+      catch (error) { showAlert(error.message || '删除失败，请重试') }
+    }
   }
 
   const handleExecutionClick = async (execution) => {

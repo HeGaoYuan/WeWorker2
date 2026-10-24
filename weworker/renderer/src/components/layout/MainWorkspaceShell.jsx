@@ -36,6 +36,21 @@ export default function MainWorkspaceShell({ children }) {
   const [shellVisible, setShellVisible] = useState(Boolean(activePanel))
   const [contentVisible, setContentVisible] = useState(Boolean(activePanel))
   const panelMounted = Boolean(mountedPanel)
+  const frameRef = useRef(null)
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth)
+  const compactPanel = workspaceWidth < rightPanelWidth + 5 + 640
+  const fullWidthPanel = compactPanel || (terminalMaximized && mountedPanel === 'terminal')
+  const canResizePanel = shellVisible && !fullWidthPanel
+
+  useEffect(() => {
+    const frame = frameRef.current
+    if (!frame) return undefined
+    const update = () => setWorkspaceWidth(frame.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(frame)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     let enterFrame = 0
@@ -129,7 +144,7 @@ export default function MainWorkspaceShell({ children }) {
   }, [rightPanelWidth])
 
   return (
-    <div className="workspace-frame" style={{
+    <div ref={frameRef} className="workspace-frame" style={{
       flex: 1,
       display: 'flex',
       flexDirection: 'row',
@@ -139,7 +154,7 @@ export default function MainWorkspaceShell({ children }) {
     }}>
       <div className="workspace-canvas" style={{
         flex: terminalMaximized && mountedPanel === 'terminal' ? '0 0 0' : 1,
-        display: 'flex',
+        display: fullWidthPanel && panelMounted ? 'none' : 'flex',
         flexDirection: 'column',
         position: 'relative',
         overflow: 'hidden',
@@ -152,41 +167,43 @@ export default function MainWorkspaceShell({ children }) {
       </div>
       {panelMounted && (
         <div
+          className="workspace-side-panel"
+          data-full-width={fullWidthPanel ? 'true' : 'false'}
           style={{
-            width: shellVisible ? (terminalMaximized && mountedPanel === 'terminal' ? '100%' : rightPanelWidth + 5) : 0,
-            flexBasis: shellVisible ? (terminalMaximized && mountedPanel === 'terminal' ? '100%' : rightPanelWidth + 5) : 0,
+            width: fullWidthPanel ? '100%' : (shellVisible ? rightPanelWidth + 5 : 0),
+            flexBasis: fullWidthPanel ? '100%' : (shellVisible ? rightPanelWidth + 5 : 0),
             flexShrink: 0,
-            flexGrow: terminalMaximized && mountedPanel === 'terminal' ? 1 : 0,
+            flexGrow: fullWidthPanel ? 1 : 0,
             overflow: 'hidden',
             display: 'flex',
             minHeight: 0,
-            transition: rightPanelResizing
+            transition: rightPanelResizing || fullWidthPanel
               ? 'none'
               : `width ${RIGHT_PANEL_TRANSITION_MS}ms ease, flex-basis ${RIGHT_PANEL_TRANSITION_MS}ms ease`,
             willChange: 'width, flex-basis',
           }}
         >
           <div
-            onMouseDown={shellVisible && !(terminalMaximized && mountedPanel === 'terminal') ? onResizeStart : undefined}
+            onMouseDown={canResizePanel ? onResizeStart : undefined}
             style={{
-              width: shellVisible && !(terminalMaximized && mountedPanel === 'terminal') ? 5 : 0,
-              cursor: shellVisible && !(terminalMaximized && mountedPanel === 'terminal') ? 'col-resize' : 'default',
+              width: canResizePanel ? 5 : 0,
+              cursor: canResizePanel ? 'col-resize' : 'default',
               flexShrink: 0,
               background: 'transparent',
               position: 'relative',
               zIndex: 1400,
-              marginLeft: shellVisible && !(terminalMaximized && mountedPanel === 'terminal') ? -2 : 0,
-              marginRight: shellVisible && !(terminalMaximized && mountedPanel === 'terminal') ? -3 : 0,
-              opacity: shellVisible && !(terminalMaximized && mountedPanel === 'terminal') ? 1 : 0,
+              marginLeft: canResizePanel ? -2 : 0,
+              marginRight: canResizePanel ? -3 : 0,
+              opacity: canResizePanel ? 1 : 0,
               transition: `opacity ${RIGHT_PANEL_TRANSITION_MS}ms ease`,
             }}
-            onMouseEnter={(e) => { if (shellVisible && !(terminalMaximized && mountedPanel === 'terminal')) e.currentTarget.style.background = 'var(--accent)' }}
+            onMouseEnter={(e) => { if (canResizePanel) e.currentTarget.style.background = 'var(--accent)' }}
             onMouseLeave={(e) => { if (!resizingRef.current) e.currentTarget.style.background = 'transparent' }}
           />
           <div
             style={{
-              width: terminalMaximized && mountedPanel === 'terminal' ? '100%' : rightPanelWidth,
-              flex: terminalMaximized && mountedPanel === 'terminal' ? '1 1 auto' : '0 0 auto',
+              width: fullWidthPanel ? '100%' : rightPanelWidth,
+              flex: fullWidthPanel ? '1 1 auto' : '0 0 auto',
               flexShrink: 0,
               minHeight: 0,
               transform: contentVisible ? 'translateX(0)' : 'translateX(18px)',
@@ -194,9 +211,9 @@ export default function MainWorkspaceShell({ children }) {
               transition: `transform ${RIGHT_PANEL_TRANSITION_MS}ms ease, opacity ${RIGHT_PANEL_TRANSITION_MS}ms ease`,
             }}
           >
-            {mountedPanel === 'files' && <UserFilesSidePanel width={rightPanelWidth} />}
-            {mountedPanel === 'capabilities' && <CapabilitiesSidePanel width={rightPanelWidth} />}
-            {mountedPanel === 'terminal' && <WeWorkerPowerShellPanel width={terminalMaximized ? '100%' : rightPanelWidth} />}
+            {mountedPanel === 'files' && <UserFilesSidePanel width={fullWidthPanel ? '100%' : rightPanelWidth} />}
+            {mountedPanel === 'capabilities' && <CapabilitiesSidePanel width={fullWidthPanel ? '100%' : rightPanelWidth} />}
+            {mountedPanel === 'terminal' && <WeWorkerPowerShellPanel width={fullWidthPanel ? '100%' : rightPanelWidth} />}
           </div>
         </div>
       )}

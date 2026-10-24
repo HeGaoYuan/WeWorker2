@@ -7,13 +7,15 @@ import { normalizeAgentName } from '../../utils/dedicated-agents.js'
  * Inline-editable dedicated Agent name.
  *
  * Renders the name plus a small pencil affordance. Clicking the pencil swaps the
- * name for an input; Enter or blur saves through `PATCH /dedicated-agents/:id`,
+ * name for an input; Enter or blur saves through `onSave` for local drafts,
+ * or `PATCH /dedicated-agents/:id` for persisted agents.
  * Escape cancels. The pencil and the input stop click propagation so the
  * surrounding list row keeps its own select behaviour while renaming.
  */
 export default function AgentNameEditor({
   agentId,
   name,
+  onSave,
   onSaved,
   disabled = false,
   maxLength = 40,
@@ -36,9 +38,11 @@ export default function AgentNameEditor({
     setSaving(true)
     setError('')
     try {
-      const result = await updateAgent(agentId, { name: validation.value })
+      const agent = onSave
+        ? await onSave(validation.value)
+        : (await updateAgent(agentId, { name: validation.value })).agent
       setDraft(null)
-      onSaved?.(result.agent)
+      onSaved?.(agent)
     } catch (err) {
       setError(err.message || '重命名失败，请重试')
     } finally {
