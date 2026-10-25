@@ -128,8 +128,10 @@ Tools:
   completion bash|zsh|fish                 输出动态 shell 补全脚本（不修改 shell 配置）
   call <tool_name> [--key=value ...] [-v, --verbose] [--output-format=json|markdown|table|plain|csv|yaml]
                                   调用 Adapter 工具（Extension 自动启动 Bridge；Toolkit 直接运行）
+                                  打开已知 Adapter 网站：open_browser --url=<Homepage> --adapter=<adapter-id>
+                                  打开未知/通用网页时可省略 --adapter，此时不处理登录
                                   参数直接以 --key=value 形式传递：
-                                    webcli call open_browser --url=http://jd.com
+                                    webcli call open_browser --url=http://jd.com --adapter=jd.com
                                     webcli call jd.com.search_products --keyword=手机 --limit=5
                                   数组/对象用 JSON 字面量：
                                     webcli call tool --fields='{"标题":"xxx"}'
@@ -855,7 +857,16 @@ async function cmdCall(toolName, argsStr, options = {}) {
 
   const callTimeoutMs = resolveToolCallTimeout(toolName);
   const loginWaitMs = resolveLoginWaitMs(options.loginWaitSeconds);
-  const site = v2Match?.adapter?.name || "";
+  let site = v2Match?.adapter?.name || "";
+  if (toolName === 'open_browser' && args.adapter !== undefined) {
+    if (typeof args.adapter !== 'string' || !args.adapter.trim() || args.adapter.length > 128) {
+      console.log(formatCallOutput({ error: 'open_browser adapter must be one Adapter id.', code: 'INVALID_ARGUMENT', trace_id: null }, outputFormat));
+      process.exitCode = 1;
+      return;
+    }
+    site = args.adapter.trim();
+    args.adapter = site;
+  }
 
   const onTimeout = () => {
     console.log(formatCallOutput({ error: "工具调用超时", trace_id: null }, outputFormat));

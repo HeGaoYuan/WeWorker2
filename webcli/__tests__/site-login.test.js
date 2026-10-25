@@ -219,10 +219,15 @@ describe('explicit login', () => {
     expect(calls.map(([type]) => type)).toEqual(['auth_check'])
   })
 
-  it('runs the flow in the background and shows its exact login page only on request', async () => {
-    const { coordinator, browser } = setup({ script: [{ cookies: false }] })
-    const result = await coordinator.login(manifest.name, { waitMs: 0 })
+  it('binds an observed login tab and shows that exact page only on request', async () => {
+    const { coordinator, browser, calls } = setup({ script: [{ cookies: false }] })
+    const result = await coordinator.login(manifest.name, {
+      waitMs: 0, skipCheck: true, targetTabId: 42, pageUrl: 'https://passport.example.com/login',
+    })
     expect(result).toMatchObject({ site: manifest.name, status: 'waiting_user' })
+    expect(calls[0]).toEqual(['auth_open_login', {
+      site: manifest.name, url: 'https://passport.example.com/login', tabId: 42,
+    }])
     expect(browser.showPage).not.toHaveBeenCalled()
     await expect(coordinator.show(manifest.name)).resolves.toMatchObject({ shown: true, site: manifest.name })
     expect(browser.showPage).toHaveBeenCalledWith('https://passport.example.com/login')

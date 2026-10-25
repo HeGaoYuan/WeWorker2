@@ -336,9 +336,9 @@ ${blacklistEntries.map((entry) => `- ${formatBlacklistEntry(entry)}`).join('\n')
 
   const adapterExecutionEnabled = channelPermissionMode === 'full'
   const webcliInvokeDesc = `Claude Code 内置 ${nativeCommandTool} 执行 \`webcli call <完整工具名> --参数名=参数值\``
-  const openBrowserDesc = `使用 Claude Code 内置 ${nativeCommandTool} 执行 \`webcli call open_browser --url=<url>\``
+  const openBrowserDesc = `使用 Claude Code 内置 ${nativeCommandTool} 执行 \`webcli call open_browser --url=<url> [--adapter=<adapter-id>]\``
   const webcliStep2 = `2. 使用 Claude Code 内置 ${nativeCommandTool} 执行 \`webcli call <完整工具名> --参数名=参数值\``
-  const openBrowserRule = `用 Claude Code 内置 ${nativeCommandTool} 执行 \`webcli call open_browser --url=...\``
+  const openBrowserRule = `用 Claude Code 内置 ${nativeCommandTool} 执行 \`webcli call open_browser --url=... [--adapter=<adapter-id>]\``
   const bashCapabilityNotice = channelPermissionMode === 'full'
     ? `
 ## Skill、Adapter 与 ${nativeCommandTool}
@@ -378,6 +378,7 @@ WeWorker Shell 的 stdout/stderr 会实时显示在右侧终端面板中，用�
 
 网站工具会自动处理登录：遇到未登录时，WeWorker 会在${browserLabel}中打开该网站的登录页，等待用户完成（扫码、短信验证码或账号密码均可），然后自动重试原命令。
 - 不要预先打开网站检测登录，也不要为了检测登录调用 check_login_status、check-login-status、whoami 或 login 命令；直接调用要用的工具。
+- \`open_browser\` 返回成功但 \`auth.status\` 为 \`waiting_user\` 时，页面已打开但网站尚未登录：立即告诉用户完成登录并停止本轮后续网站调用，不要重试 \`open_browser\`；桌面端会继续显示登录进度。
 - 工具返回 \`code: AUTH_REQUIRED\` 且 \`auth.status\` 为 \`waiting_user\` 时：告诉用户需要在${browserLabel}中登录该网站（登录页已打开${opts?.browserInstance === 'dedicated' ? '，也可点击 WeWorker 左侧栏底部的浏览器图标显示' : ''}），用户完成后再执行一次原命令。\`auth.screenshot\` 是登录页截图路径，可直接展示给用户扫码。${opts?.browserInstance === 'dedicated' ? '不要让用户去自己的 Chrome 登录。' : ''}
 - \`AUTH_CANCELLED\` 表示用户取消了登录；\`AUTH_RETRY_REQUIRED\` 表示写操作因登录中断、登录已完成，需向用户确认后再执行。
 ` : ''
@@ -402,7 +403,7 @@ Host-managed Extension Adapter（包括页面/DOM 命令）必须直接调用业
       : '2. 当前权限模式不能执行 Adapter；需要执行时明确说明需要 full 权限。',
     native_command_capability: bashCapabilityNotice,
     open_browser_guidance: adapterExecutionEnabled
-      ? '不要在 Host-managed Extension Adapter（包括页面/DOM 命令）之前调用 open_browser 或登录检查；宿主会自动处理匹配标签页与登录。open_browser 只用于用户明确要求显示网站、通用浏览器／探索流程，或当前 Adapter Skill 明确要求手工准备页面。后台 API 不要预先打开网站；HTTP 与 Toolkit 按各自运行时执行。'
+      ? '不要在 Host-managed Extension Adapter（包括页面/DOM 命令）之前调用 open_browser 或登录检查；宿主会自动处理匹配标签页与登录。open_browser 只用于用户明确要求显示网站、通用浏览器／探索流程，或当前 Adapter Skill 明确要求手工准备页面。打开已知 Adapter 的网站时传 `--adapter=<adapter-id>` 以接入该站登录 flow；探索未知网页时省略该参数。后台 API 不要预先打开网站；HTTP 与 Toolkit 按各自运行时执行。'
       : '本节仅在 full 权限可执行；当前不要打开网站或调用 Adapter。',
     open_browser_wait_rule: adapterExecutionEnabled
       ? `${openBrowserRule} 仅在确实需要手工页面准备时使用；使用后必须等待至少 5 秒再执行依赖该页面的后续页面/DOM 操作。`

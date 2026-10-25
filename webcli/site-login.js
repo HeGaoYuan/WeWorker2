@@ -226,14 +226,14 @@ export class SiteLoginCoordinator {
   // ── Explicit actions ──────────────────────────────────────────────────────
 
   /** `webcli login <site>` / the desktop "登录" button: check first, then run the flow. */
-  async login(site, { waitMs = DEFAULT_LOGIN_WAIT_MS } = {}) {
+  async login(site, { waitMs = DEFAULT_LOGIN_WAIT_MS, skipCheck = false, targetTabId, pageUrl } = {}) {
     const manifest = this._manifestFor(site);
     if (!manifest) throw new Error(`Adapter "${site}" is not available.`);
-    if (!this._flows.has(site) && manifest.auth?.check) {
+    if (!this._flows.has(site) && !skipCheck && manifest.auth?.check) {
       const current = await this.check(site).catch(() => null);
       if (current?.logged_in === true) return { site, status: 'already_logged_in' };
     }
-    const flow = this._ensureFlow(manifest, { manual: true });
+    const flow = this._ensureFlow(manifest, { manual: true, targetTabId, pageUrl });
     const outcome = await this._waitFor(flow, waitMs);
     return {
       site, status: outcome === 'pending' ? 'waiting_user' : outcome,
@@ -318,11 +318,15 @@ export class SiteLoginCoordinator {
     });
   }
 
-  async _runFlow(manifest, flow, { pageUrl, manual = false } = {}) {
+  async _runFlow(manifest, flow, { pageUrl, manual = false, targetTabId } = {}) {
     const site = manifest.name;
     const deadline = this._now() + this._flowTimeoutMs;
     this._emit(manifest, flow, 'login_required');
-    const opened = await this._extension('auth_open_login', { site, ...(pageUrl ? { url: pageUrl } : {}) }, 20_000);
+    const opened = await this._extension('auth_open_login', {
+      site,
+      ...(pageUrl ? { url: pageUrl } : {}),
+      ...(Number.isInteger(targetTabId) ? { tabId: targetTabId } : {}),
+    }, 20_000);
     flow.url = opened?.url || '';
     const finish = async (outcome, extra = {}) => {
       if (flow.shown && outcome !== 'timeout') await this._browser.hideWindows().catch(() => {});

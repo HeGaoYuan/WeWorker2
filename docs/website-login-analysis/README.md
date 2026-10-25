@@ -316,97 +316,50 @@ Renderer 会处理：
 - `cancelled`
 - `timeout`
 
-## 7.1 `open_browser` 不会触发登录流程
+## 7.1 `open_browser` 的登录感知参数
 
-`webcli call open_browser --url=<URL>` 是 Bridge 内置的通用开页工具，并非 Adapter 业务命令。它仅校验 URL 是否属于已配置的 Adapter/受控来源的允许 origin，随后通过扩展创建 Tab 或回退到系统 Chrome。
+`webcli call open_browser --url=<URL>` 仍是 Bridge 内置的通用开页工具。未传 `--adapter` 时，它只校验 URL 是否属于受控 origin 并创建 Tab，不推断网站归属，也不进入登录 flow。
 
-该命令**不会**：
-
-- 将 URL 解析或归属为某个 Adapter 的认证上下文；
-- 使用 manifest 的 `auth`、`login_url`、`login_hosts` 或 `auth.check`；
-- 等待页面完成加载或观察跳转后的 URL；
-- 因页面跳转到登录页而产生 `AUTH_REQUIRED`；
-- 进入 `SiteLoginCoordinator`，发布 `auth_event`，或显示桌面端“需要登录”提示。
-
-因此，本文前述自动打开登录页、登录状态检测和安全重试流程只适用于**已解析为 `runtime: "extension"` 的 Adapter 业务命令**，或显式的 `webcli login <site>` / 桌面端登录控制动作；不适用于泛用的 `open_browser`。
-
-一个已经由 `open_browser` 打开的站点若跳转到登录/SSO 页面，在随后调用该站点的 Adapter 业务工具时，扩展会检测到现有登录 Tab，返回带 `phase: "navigation"` 的 `AUTH_REQUIRED`。此时 Bridge 才会复用该 Tab 启动上述登录 flow，并向桌面端发送提示。
-
-若产品希望“打开指定站点后发现登录页就提示用户”，应新增显式的、按 manifest 绑定的 opt-in 能力（例如 `--site=<adapter-id> --login-aware`），而不应让泛用 `open_browser` 基于任意 URL 或 `/login` 字样自动接管。这种能力应：限定 Adapter 域名和单次观察时限；仅通过 `isLoginPageUrl(manifest, url)` 判断；只启动登录提示/flow 而不重试开页；保留业务命令现有的读写重试安全策略。
-
-## 7.2 待优化：`open_browser` 与登录优先流程脱节
-
-### 问题现状
-
-当前 Agent 若先调用：
+打开已知 Adapter 网站时，可显式绑定：
 
 ```text
-webcli call open_browser --url=https://<supported-site>/
+webcli call open_browser --url=<该 Adapter 的 Homepage> --adapter=<adapter-id>
 ```
 
-而目标网站因为未登录重定向到自身或共享 SSO 登录页，系统只会完成“创建 Tab”这一动作。此命令不会等待导航、识别最终登录页、发布 `AUTH_REQUIRED` 或启动 `SiteLoginCoordinator`。因此会出现以下体验断层：
+Bridge 会校验 Adapter 当前可用、URL 确实属于该 Adapter 的 `homepage_url/match/domains`，再打开页面并以 `waitMs: 0` 启动或复用该 Adapter 的 `SiteLoginCoordinator`。开页调用不会等待完整登录，也不会重放开页动作；返回结果同时携带认证状态：
 
-```text
-Agent 打开网站
-  → 网站跳转至登录页
-  → 用户在浏览器中看到登录页
-  → WeWorker 桌面端没有“需要登录”提示
-  → Agent 没有“等待用户登录”的结构化状态
-  → Agent 可能继续执行依赖登录态的后续步骤，直到业务工具失败
+```json
+{
+  "success": true,
+  "tabId": 123,
+  "auth": {
+    "site": "example.com",
+    "status": "waiting_user",
+    "flowActive": true
+  }
+}
 ```
 
-现有逻辑仅在**后续调用站点 Adapter 业务命令**时，才会发现该站点已经处于登录/SSO 页面，并以 `AUTH_REQUIRED` 启动登录 flow。因此，`open_browser` 与“登录优先、登录状态可见、任务可恢复”的目标体验目前是割裂的。
+若 Adapter 已登录，状态为 `already_logged_in`；若 Adapter 未声明 `auth`，页面仍会打开并返回 `not_configured`。`waiting_user` 表示开页已成功、登录 flow 在后台继续，不应重试 `open_browser`。桌面端通过现有 `auth_event` 展示二维码或手动登录提示。
 
-### 期望体验
+显式参数解决了共享 SSO 的归属问题：初始业务 URL 和 `--adapter` 决定 flow 身份，最终登录 URL只按该 Adapter 的 `login_url/login_hosts` 验证，绝不用于反查 Adapter。若 URL 与 Adapter 不一致，Bridge 在开页前拒绝，避免错误绑定。
 
-对已支持、且 Adapter 声明 `auth` 的业务站点，`open_browser` 应能在开页后识别认证跳转，并让桌面端与 Agent 同时获得明确状态：
+## 7.2 AI 与确定性调用如何使用
 
-```text
-Agent 打开业务站点
-  → 页面跳转到该站点声明的登录/SSO 地址
-  → Bridge 启动或复用该站点的登录 flow
-  → 桌面端显示“需要登录”提示
-  → Agent 收到 waiting_for_login / login_required 状态
-  → 用户完成登录
-  → Bridge 验证目标站点的 auth.check
-  → 后续业务步骤才继续执行
-```
+`open_browser` 主要通过系统提示和 WebCLI Skill 暴露给 AI，而不是一个独立的 MCP 工具 schema：
 
-`open_browser` 本身不需要作为业务操作重试：它的职责是把页面打开；登录后需恢复的是 Agent 的后续业务步骤。业务 Adapter 命令仍应保留现有的安全策略：读操作可以自动重试一次，可能已执行的写操作不得自动重放。
+- 主 Agent：`weworker/backend-ts/src/agent.ts` 与 `prompts/agent.md`；
+- WebCLI Skill：`webcli/skills/webcli/SKILL.md`；
+- 专属 Agent：`weworker/backend-ts/src/dedicated-agents/agent-runtime.ts`；
+- 桌面命令模板：`weworker/renderer/src/utils/chat-slash-commands.js`。
 
-### 共享 SSO 的关键约束
+这些入口统一遵循：常规 Host-managed Adapter 业务命令仍直接调用，不机械地先开页面；只有用户明确要求显示网站、通用浏览器/探索流程或 Skill 明确要求页面准备时才使用 `open_browser`。已知 Adapter 必须传 `--adapter=<id>`；探索未知网页时省略。
 
-不能根据**最终跳转到的登录 URL**反查或猜测 Adapter，因为内网中多个业务系统常共用同一个 SSO，例如：
+Backend 的确定性页面准备 `weworker/backend-ts/src/api-query-router/page-prep.ts` 在工具声明 `navigate_before` 时也会调用 `open_browser`，并从工具目录携带其 `adapterId`，因此同样可接入登录 flow。
 
-```text
-oa.intra.example.com       ─┐
-expense.intra.example.com  ─┼→ sso.intra.example.com/login
-hr.intra.example.com       ─┘
-```
+共享 SSO 下，逻辑 flow 始终按 `(browser contextId, adapterId)` 隔离。不同 Adapter 可以复用一个物理 SSO Tab，但登录完成仍分别执行各自的 `auth.check`，不能因一个站点成功就批量标记其他站点已登录。
 
-正确的归属模型应是：
-
-```text
-初始业务 URL → 确定本次 flow 的目标 Adapter
-最终 SSO URL → 仅证明它是该 Adapter 声明允许的登录页面
-目标 Adapter 的 auth.check → 最终确认该业务站点是否已登录
-```
-
-例如从 `oa.intra.example.com` 发起的开页，即使最终落在共享 `sso.intra.example.com/login`，认证 flow 仍归属 OA Adapter；不应因费用或 HR Adapter 也声明了该 SSO URL 而发生歧义。
-
-若同一浏览器 Profile 中并发打开多个共用 SSO 的业务站点，应允许复用同一个物理 SSO Tab，但每个业务站点仍需分别执行自己的 `auth.check`。共享登录页或 Cookie 并不自动代表所有业务站点均已具备可用会话。
-
-### 尚待决策的实现范围
-
-以下方案尚未确定、也未实施：
-
-1. 是否让已支持站点的 `open_browser` 自动根据**初始业务 URL**绑定 Adapter 并进行一次有上限的导航观察；未知站点维持纯开页行为。
-2. 如何把观察到的登录状态返回给发起调用的 Agent：结构化 `waiting_for_login` 成功结果、`AUTH_REQUIRED` 错误，或同时发送状态事件。
-3. 如何让聊天/Agent 任务在 `logged_in` 后恢复后续步骤；这与 Bridge 对单个业务工具调用的自动重试是不同层级的任务恢复能力。
-4. 是否在 manifest 的 `auth` 中增加可选的 `session_group` / `sso_group`，仅用于共享 SSO Tab 和合并用户提示；无论是否共享，站点可用性仍必须由各自的 `auth.check` 判断。
-5. 对导航超时、用户关闭登录 Tab、跨域跳转但不属于声明 SSO、多个 Adapter 命中初始业务 URL 等情形的产品交互与降级策略。
-
-在上述语义和恢复策略明确前，不应直接让泛用 `open_browser` 根据任意 URL、通用 `/login` 路径或共享 SSO URL 自动启动登录 flow，以避免错误归属、误报和并发状态混淆。
+当前显式绑定实现不等待 `open_tab` 的最终导航 URL，而是开页后直接使用 Adapter 的 `auth.check` 和既有 `login()` 状态机。若未来出现没有可靠 `auth.check`、且开页重定向时序导致重复登录 Tab 的 Adapter，再增加以 `tabId` 为范围的有界导航观察，不需要恢复 URL 反查。
 
 ## 8. Browser Profile、Cookie 与凭据
 

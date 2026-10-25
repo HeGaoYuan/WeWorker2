@@ -14,6 +14,7 @@ import {
   adapterPrimaryHost,
   createRouteRedirects,
   hostMatchesPattern,
+  isAdapterPageHost,
   pickRecentScopeTab,
   pickRouteTab,
 } from './host-scope.js';
@@ -2945,6 +2946,13 @@ async function handleNativeMessage(msg) {
         traceID,
       });
       traceLog(traceID, `[ServiceWorker] call_tool 错误: ${err.message}${err?.code ? ` (${err.code})` : ''}`);
+    }
+
+  } else if (msg.type === 'auth_observe_open') {
+    try {
+      sendToNative({ type: 'call_tool_result', id: msg.id, result: await observeOpenedSiteTab(msg) });
+    } catch (err) {
+      sendToNative({ type: 'call_tool_error', id: msg.id, error: err.message });
     }
 
   } else if (msg.type === 'auth_open_login') {
@@ -7323,10 +7331,72 @@ async function findSiteLoginTab(manifest) {
   return tabs.find((tab) => tab?.id && isLoginPageUrl(manifest, loginTabUrl(manifest, tab), { root: true })) || null;
 }
 
+function isAdapterBusinessUrl(manifest, value) {
+  try {
+    const url = new URL(String(value));
+    return ['http:', 'https:'].includes(url.protocol) && isAdapterPageHost(manifest, url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Observe only the tab created by adapter-aware open_browser; never infer ownership from another tab. */
+async function observeOpenedSiteTab(msg) {
+  const manifest = await managedSiteManifest(msg.site);
+  const tabId = Number(msg.tabId);
+  if (!Number.isInteger(tabId) || tabId < 0) throw new Error('Invalid opened tab.');
+  const deadline = Date.now() + 5_000;
+  let lastSignature = '';
+  let stableCount = 0;
+  let last = null;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab?.id) return { tabId, state: 'closed' };
+    last = tab;
+    const candidates = [tab.pendingUrl, tab.url].filter((value) => typeof value === 'string' && value);
+    const loginUrl = candidates.find((value) => isLoginPageUrl(manifest, value, { root: true }));
+    if (loginUrl) {
+      siteLoginTabs.set(manifest.name, tabId);
+      return { tabId, state: 'login', url: authDisplayUrl(loginUrl) };
+    }
+    const signature = `${tab.status || ''}\n${tab.pendingUrl || ''}\n${tab.url || ''}`;
+    stableCount = signature === lastSignature ? stableCount + 1 : 0;
+    lastSignature = signature;
+    if (tab.status === 'complete' && stableCount >= 5) {
+      return {
+        tabId,
+        state: isAdapterBusinessUrl(manifest, tab.url) ? 'business' : 'unknown',
+        url: authDisplayUrl(tab.url),
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return {
+    tabId,
+    state: last && isAdapterBusinessUrl(manifest, last.url) ? 'business' : 'unknown',
+    url: authDisplayUrl(last?.pendingUrl || last?.url || ''),
+    timedOut: true,
+  };
+}
+
 /** Open (or reuse) the login page. Only declared hosts or recognised login pages are opened. */
 async function openSiteLoginTab(msg) {
   const manifest = await managedSiteManifest(msg.site);
-  let tab = await findSiteLoginTab(manifest);
+  let tab = null;
+  const preferredTabId = Number(msg.tabId);
+  if (Number.isInteger(preferredTabId) && preferredTabId >= 0) {
+    const preferred = await chrome.tabs.get(preferredTabId).catch(() => null);
+    if (!preferred?.id || !isLoginPageUrl(manifest, loginTabUrl(manifest, preferred), { root: true })) {
+      throw new Error('The opened tab is no longer this Adapter login page.');
+    }
+    tab = preferred;
+  }
+  if (!tab) {
+    const knownTabId = siteLoginTabs.get(manifest.name);
+    const known = Number.isInteger(knownTabId) ? await chrome.tabs.get(knownTabId).catch(() => null) : null;
+    if (known?.id && isLoginPageUrl(manifest, loginTabUrl(manifest, known), { root: true })) tab = known;
+  }
+  if (!tab) tab = await findSiteLoginTab(manifest);
   if (!tab) {
     // Only declared hosts are opened from a request; an undeclared SSO page is used only
     // when the site itself redirected a tab there (found above).
