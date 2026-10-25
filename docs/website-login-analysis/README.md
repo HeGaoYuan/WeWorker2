@@ -361,6 +361,12 @@ Backend 的确定性页面准备 `weworker/backend-ts/src/api-query-router/page-
 
 当前显式绑定实现不等待 `open_tab` 的最终导航 URL，而是开页后直接使用 Adapter 的 `auth.check` 和既有 `login()` 状态机。若未来出现没有可靠 `auth.check`、且开页重定向时序导致重复登录 Tab 的 Adapter，再增加以 `tabId` 为范围的有界导航观察，不需要恢复 URL 反查。
 
+## 7.3 企业微信机器人登录通知
+
+WeWorker Backend 会监听 Bridge 现有的 `auth_event`，并仅在登录事件能唯一匹配当前企业微信会话中的 WebCLI 调用时通知用户，不改变桌面端或 WebCLI 的协议和行为。
+
+有可用二维码时，企业微信会发送经过路径、大小和格式校验的登录图片；没有二维码时，提示用户到运行 WeWorker 的电脑完成登录，并仅在 Adapter 允许自动登录时建议在桌面端保存凭据。登录文字与最终结果共用同一条流式回复以保证顺序，且不会写入 Agent 对话历史；并发归属不明确时不主动发送，避免跨会话泄露。
+
 ## 8. Browser Profile、Cookie 与凭据
 
 ### 8.1 浏览器会话
