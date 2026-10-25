@@ -465,6 +465,7 @@ export function validatePatternsFile(raw: unknown): string[] {
     checkBoolean(config.enabled, `${label}.enabled`, errors)
     checkFiniteNumber(config.priority, `${label}.priority`, errors)
     checkObject(config.default_args, `${label}.default_args`, errors)
+    checkRenderSpec(config.render, `${label}.render`, errors)
     checkRegexList(config.negative_patterns, `${label}.negative_patterns`, errors)
     if (config.patterns !== undefined) {
       if (!Array.isArray(config.patterns)) {

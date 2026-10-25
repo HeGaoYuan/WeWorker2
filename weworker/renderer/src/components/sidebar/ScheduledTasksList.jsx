@@ -3,6 +3,9 @@ import { useScheduledTasksStore } from '../../store/scheduled-tasks.js'
 import { useToolPackagePageStore } from '../../store/tool-package-page.js'
 import { useExplorationPageStore } from '../../store/exploration-page.js'
 import { leaveWebsiteExploration } from '../../store/website-exploration.js'
+import { RenameIcon, TrashIcon } from '../icons/PanelIcons.jsx'
+import Tooltip from '../Tooltip.jsx'
+import { showConfirm } from '../../store/dialog.js'
 
 /**
  * Simple frontend cron-to-summary conversion.
@@ -75,23 +78,57 @@ export default function ScheduledTasksList() {
 }
 
 function ScheduledTaskItem({ task, active, onSelect }) {
-  const [hovered, setHovered] = React.useState(false)
+  const [draftTitle, setDraftTitle] = React.useState(null)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const pending = React.useRef(false)
+  const cancelled = React.useRef(false)
+  const updateTask = useScheduledTasksStore((s) => s.updateTask)
+  const deleteTask = useScheduledTasksStore((s) => s.deleteTask)
+  const title = task.title || '未命名任务'
+
+  const saveTitle = async () => {
+    if (draftTitle === null || pending.current || cancelled.current) return
+    const nextTitle = draftTitle.trim()
+    if (!nextTitle) { setError('任务名称不能为空'); return }
+    if (nextTitle === task.title) { setDraftTitle(null); setError(''); return }
+    pending.current = true
+    setBusy(true)
+    setError('')
+    try {
+      await updateTask(task.id, { title: nextTitle })
+      setDraftTitle(null)
+    } catch (err) {
+      setError(err.message || '重命名失败，请重试')
+    } finally { pending.current = false; setBusy(false) }
+  }
+
+  const remove = async () => {
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
+    setError('')
+    try {
+      const confirmed = await showConfirm(`确定要删除任务「${title}」吗？\n\n这将同时删除该任务的所有执行记录，此操作不可撤销。`, '删除定时任务')
+      if (confirmed) await deleteTask(task.id)
+    } catch (err) {
+      setError(err.message || '删除失败，请重试')
+    } finally { pending.current = false; setBusy(false) }
+  }
 
   return (
     <div
+      className={`scheduled-task-item sidebar-detail-item${active ? ' is-active' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`选择定时任务 ${title}`}
+      aria-current={active ? 'true' : undefined}
       onClick={onSelect}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        padding: '7px 12px',
-        cursor: 'pointer',
-        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-        borderRadius: 6,
-        margin: '1px 6px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        transition: 'background 0.1s',
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault()
+          onSelect()
+        }
       }}
     >
       {/* Enabled/disabled status dot */}
@@ -105,9 +142,28 @@ function ScheduledTaskItem({ task, active, onSelect }) {
         }}
       />
       <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <span
+        {draftTitle !== null ? (
+          <input
+            autoFocus
+            aria-label="编辑定时任务名称"
+            aria-invalid={error ? 'true' : undefined}
+            value={draftTitle}
+            disabled={busy}
+            onFocus={(event) => event.target.select()}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => { setDraftTitle(event.target.value); setError('') }}
+            onBlur={saveTitle}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void saveTitle() }
+              if (event.key === 'Escape') { event.preventDefault(); cancelled.current = true; setDraftTitle(null); setError('') }
+            }}
+            style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', font: 'inherit', fontSize: 12, padding: '1px 3px', color: 'var(--text-primary)', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 4 }}
+          />
+        ) : <span
           style={{
             fontSize: 12,
+            lineHeight: '18px',
             display: 'block',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -115,11 +171,12 @@ function ScheduledTaskItem({ task, active, onSelect }) {
             color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          {task.title || '未命名任务'}
-        </span>
+          {title}
+        </span>}
         <span
           style={{
             fontSize: 10,
+            lineHeight: '15px',
             color: 'var(--text-muted)',
             display: 'block',
             overflow: 'hidden',
@@ -129,6 +186,20 @@ function ScheduledTaskItem({ task, active, onSelect }) {
         >
           {cronToSummary(task.cron_expression)}
         </span>
+        {error && <span role="alert" style={{ display: 'block', fontSize: 11, color: 'var(--error, #ef4444)' }}>{error}</span>}
+      </div>
+      <div style={{ display: 'flex', flexShrink: 0, gap: 2 }} onClick={(event) => event.stopPropagation()}>
+        <Tooltip text="重命名">
+          <button type="button" className="sidebar-icon-button" aria-label={`重命名定时任务 ${title}`} disabled={busy || draftTitle !== null}
+            onClick={() => { cancelled.current = false; setError(''); setDraftTitle(task.title || '') }}>
+            <RenameIcon />
+          </button>
+        </Tooltip>
+        <Tooltip text="删除">
+          <button type="button" className="sidebar-icon-button" aria-label={`删除定时任务 ${title}`} disabled={busy || draftTitle !== null} onClick={remove}>
+            <TrashIcon />
+          </button>
+        </Tooltip>
       </div>
     </div>
   )

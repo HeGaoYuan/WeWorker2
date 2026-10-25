@@ -152,6 +152,8 @@ export type PatternConfigEntry = {
   negative_patterns?: string[]
   arg_extractors?: ArgExtractorRule[]
   default_args?: Record<string, unknown>
+  /** Tier -1 命中后的渲染方式；与 route / alias / shortcut 共用同一份声明。 */
+  render?: RouterRenderSpec
 }
 
 export type PatternsFile = {

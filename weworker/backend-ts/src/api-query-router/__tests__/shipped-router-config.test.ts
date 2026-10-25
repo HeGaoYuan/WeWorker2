@@ -296,9 +296,13 @@ describe('随包路由配置：结构自洽', () => {
     expect(outOfScope).toEqual([])
   })
 
-  it('shortcut / plan 终端声明的 schemaId 都在 renderers.json 里有定义', () => {
+  it('pattern / shortcut / plan 终端声明的 schemaId 都在 renderers.json 里有定义', () => {
     const schemas = new Set(Object.keys(bundle.renderers.schemas ?? {}))
     const missing: string[] = []
+    for (const [tool, config] of Object.entries(bundle.patterns.configs ?? {})) {
+      const id = config.render?.type === 'schema' ? config.render.schemaId : undefined
+      if (id && !schemas.has(id)) missing.push(`patterns/${tool} → ${id}`)
+    }
     for (const entry of bundle.shortcuts.shortcuts ?? []) {
       const id = entry.render?.type === 'schema' ? entry.render.schemaId : undefined
       if (id && !schemas.has(id)) missing.push(`shortcuts/${entry.id} → ${id}`)

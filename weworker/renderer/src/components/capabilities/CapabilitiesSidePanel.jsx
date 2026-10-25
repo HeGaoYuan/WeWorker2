@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useSitesStore } from '../../store/sites.js'
 import { useCapabilitiesPanelStore } from '../../store/capabilities-panel.js'
 import SitesCapabilitiesView from './SitesCapabilitiesView.jsx'
 import Tooltip from '../Tooltip.jsx'
-import { EyeIcon, EyeOffIcon, GridViewIcon, ListViewIcon, SearchIcon } from '../icons/PanelIcons.jsx'
-import { normalizeSiteScenarios } from '../../utils/site-scenarios.js'
+import { GridViewIcon, ListViewIcon, SearchIcon } from '../icons/PanelIcons.jsx'
 
 const headerBtnStyle = {
   width: 28,
@@ -61,21 +60,9 @@ export default function CapabilitiesSidePanel({ width = 340 }) {
   const setViewMode = useCapabilitiesPanelStore((s) => s.setViewMode)
   const load = useSitesStore((s) => s.load)
   const sites = useSitesStore((s) => s.sites)
-  const setAllWelcomeVisibility = useSitesStore((s) => s.setAllWelcomeVisibility)
   const [query, setQuery] = useState('')
   const searchRef = useRef(null)
 
-  const enabledSites = useMemo(() => sites.filter((s) => s.enabled), [sites])
-  const totalScenarios = useMemo(
-    () => sites.reduce((total, site) => total + (site.scenarioCount ?? normalizeSiteScenarios(site).length), 0),
-    [sites],
-  )
-  const anyWelcomeVisible = useMemo(
-    () => enabledSites.some((s) => s.visible),
-    [enabledSites],
-  )
-  const hideAllWelcome = () => setAllWelcomeVisibility(false)
-  const showAllWelcome = () => setAllWelcomeVisibility(true)
 
   useEffect(() => {
     load()
@@ -116,7 +103,7 @@ export default function CapabilitiesSidePanel({ width = 340 }) {
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', flexShrink: 0 }}>场景总览</div>
               <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: 10.5 }}>
-                {enabledSites.length} 已启用 / {sites.length} 网站 / {totalScenarios} 场景
+                {sites.length} 个网站
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -145,22 +132,6 @@ export default function CapabilitiesSidePanel({ width = 340 }) {
                 </button>
               </Tooltip>
               </div>
-              <Tooltip text={anyWelcomeVisible ? '一键隐藏欢迎页网站' : '全部显示在欢迎页'}>
-                <button
-                  type="button"
-                  onClick={anyWelcomeVisible ? hideAllWelcome : showAllWelcome}
-                  disabled={enabledSites.length === 0}
-                  aria-label={anyWelcomeVisible ? '一键隐藏欢迎页网站' : '全部显示在欢迎页'}
-                  title={anyWelcomeVisible ? '一键隐藏' : '全部显示'}
-                  style={{
-                    ...headerBtnStyle,
-                    opacity: enabledSites.length === 0 ? 0.4 : 1,
-                    cursor: enabledSites.length === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {anyWelcomeVisible ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
-              </Tooltip>
               <Tooltip text="收起面板">
                 <button
                   type="button"

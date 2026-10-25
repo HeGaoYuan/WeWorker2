@@ -13,7 +13,7 @@
  *     `global.min_confidence_for_match`（缺省 0.8）。
  */
 
-import type { PatternConfigEntry, PatternRule, PatternsFile } from '../router-config/types.js'
+import type { PatternConfigEntry, PatternRule, PatternsFile, RouterRenderSpec } from '../router-config/types.js'
 import { createLogger } from '../logger.js'
 
 const log = createLogger('api-query-router')
@@ -26,6 +26,8 @@ export type PatternHit = {
   tool: string
   args: Record<string, unknown>
   confidence: number
+  /** 配置里声明的渲染方式；由级联层继续传给执行期渲染器。 */
+  render?: RouterRenderSpec
   /** 命中的模式描述，仅日志用 */
   matchedPatterns: string[]
   /** 由 `arg_extractors` 从原句抽到的参数（覆盖 default_args） */
@@ -199,6 +201,11 @@ export function buildPatternMatcher(
         if (confidence > best) {
           best = confidence
           bestDefaultArgs = pattern.default_args
+        } else if (confidence === best && pattern.default_args) {
+          // Several equally confident rules can describe independent refinements of the same
+          // intent. Merge only defaults that were explicitly declared; a later broad rule with
+          // no defaults must not erase values supplied by an equally weighted specific rule.
+          bestDefaultArgs = { ...(bestDefaultArgs ?? {}), ...pattern.default_args }
         }
       }
       if (!matchedPatterns.length) continue
@@ -209,6 +216,7 @@ export function buildPatternMatcher(
         tool: entry.key,
         args: { ...(entry.entry.default_args ?? {}), ...(bestDefaultArgs ?? {}), ...extractedArgs },
         confidence: best,
+        render: entry.entry.render,
         matchedPatterns,
         extractedArgs,
       }

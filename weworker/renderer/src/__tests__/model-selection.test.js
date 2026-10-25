@@ -11,7 +11,7 @@ it('shows unconfigured presets in chat with key state, keeping configured additi
   }, 'builtin')
   assert.deepEqual(options.map(item => item.value), ['builtin', 'anthropic', 'glm', 'deepseek', 'model-extra'])
   assert.deepEqual(options.slice(1, 4).map(item => item.keyConfigured), [true, false, false])
-  assert.equal(options[4].label, '额外配置 · fixture-model')
+  assert.equal(options[4].label, '额外配置')
   assert.deepEqual(options.map(item => item.keyConfigured), [true, true, false, false, true])
   assert.equal(buildChatProviderOptions(templates, {}, 'old-provider')[0].value, 'old-provider')
 })
@@ -67,6 +67,16 @@ describe('model catalog connection prerequisites', () => {
     assert.equal(openai.target, 'webwright')
   })
 
+  it('uses the selected WeWorker protocol when validating and requesting its model catalog', () => {
+    const openaiChat = { ...form, weworker_protocol: 'openai_chat_completions', models_url: '', base_url: 'https://example.com/v1' }
+    assert.equal(getModelCatalogIssue('custom', openaiChat, { has_key: true }), '')
+    const access = buildModelCatalogAccess('fixture', 'custom', openaiChat)
+    assert.equal(access.weworker_protocol, 'openai_chat_completions')
+    assert.equal(access.api_key, '')
+    assert.equal(access.openai_api_key, '')
+    assert.equal(access.base_url, openaiChat.base_url)
+  })
+
   it('allows explicit catalog URLs with full conversation endpoints and keeps the two catalogs separate', () => {
     const draft = { ...form, base_url_is_full: true, models_url: 'https://example.org/models?version=1', models_auth_type: 'auth_token', openai_models_url: 'https://example.com/catalog' }
     assert.equal(getModelCatalogIssue('custom', draft, { has_key: true }), '')
@@ -102,6 +112,15 @@ describe('model catalog connection prerequisites', () => {
 })
 
 describe('provider model selection', () => {
+  it('keeps custom models alongside refreshed catalog entries and marks them removable', () => {
+    assert.deepEqual(buildModelOptions(['remote-a'], 'my-local-model', { customModels: ['my-local-model'] }), [
+      { value: 'remote-a', label: 'remote-a', currentOnly: false },
+      { value: 'my-local-model', label: 'my-local-model', currentOnly: false, custom: true },
+    ])
+    assert.equal(selectModelAfterCatalogRefresh('my-local-model', { source: 'remote', models: ['remote-a'] }, { customModels: ['my-local-model'] }), 'my-local-model')
+    assert.equal(selectModelAfterCatalogRefresh('stale-model', { source: 'remote', models: ['remote-a'] }, { customModels: ['my-local-model'] }), 'remote-a')
+  })
+
   it('keeps an unlisted current model as an enabled option', () => {
     assert.deepEqual(buildModelOptions(['deepseek-v4-flash'], 'deepseek-chat'), [
       { value: 'deepseek-chat', label: 'deepseek-chat（当前配置）', currentOnly: true },

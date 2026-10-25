@@ -6,7 +6,7 @@ import { buildProviderVisibility, isFixedProvider } from './provider-visibility.
 import { isBuiltinProvider } from './builtin-provider.js'
 import { DEFAULT_CONTEXT_LIMIT, parseContextLimit } from './context-window.js'
 import { isAnthropicAuthType, type AnthropicAuthType } from './anthropic-auth.js'
-import { normalizeLlmUrlInput } from './llm-egress.js'
+import { isLlmProtocol, normalizeLlmUrlInput } from './llm-egress.js'
 import { modelCatalogConfigPatch, type ModelCatalogConfig } from './model-catalog-config.js'
 
 export interface ModelConfiguration extends ModelCatalogConfig {
@@ -21,7 +21,9 @@ export interface ModelConfiguration extends ModelCatalogConfig {
   openai_base_url_is_full?: boolean
   openai_api_key?: string
   openai_model?: string
+  custom_models?: string[]
   auth_type: AnthropicAuthType
+  weworker_protocol?: import('./llm-egress.js').LlmProtocol
 }
 
 export function validateModelConfigurationName(value: unknown): string {
@@ -116,6 +118,7 @@ export function createModelConfiguration(settings: Settings, providerId: string)
     openai_base_url_is_full: false,
     auth_type: active?.auth_type || (providerId === 'custom' ? 'api_key' : provider.authType) || 'api_key',
     ...(providerId === 'custom' ? {
+      weworker_protocol: active?.weworker_protocol || 'anthropic_messages',
       models_url: '',
       models_url_is_full: false,
       models_auth_type: 'inherit' as const,
@@ -134,7 +137,7 @@ export function getModelConfiguration(settings: Settings, id: string | undefined
   if (!configuration || !provider) return undefined
   return { ...configuration, model: configuredModel(provider.id, configuration.model),
     ...(provider.fixedModel ? { openai_model: provider.defaultModel } : {}),
-    ...(provider.id === 'custom' ? {} : {
+    ...(provider.id === 'custom' ? { weworker_protocol: configuration.weworker_protocol === 'openai_chat_completions' ? 'openai_chat_completions' : 'anthropic_messages' } : {
       base_url: provider.weworker.baseUrl, openai_base_url: provider.webwright.baseUrl,
       base_url_is_full: false, openai_base_url_is_full: false,
       auth_type: provider.authType || 'api_key',
@@ -164,6 +167,7 @@ export function activateModelConfiguration(settings: Settings, id: string): Part
     base_url_is_full: configuration.base_url_is_full === true,
     context_limit: configuration.context_limit,
     active_auth_type: configuration.auth_type,
+    active_weworker_protocol: configuration.weworker_protocol === 'openai_chat_completions' ? 'openai_chat_completions' : 'anthropic_messages',
   }
 }
 
@@ -171,6 +175,12 @@ export function updateModelConfiguration(settings: Settings, id: string, input: 
   const current = getModelConfiguration(settings, id)
   if (!current) throw new Error('模型配置不存在')
   const next = { ...current }
+  if (input.custom_models !== undefined) {
+    if (!Array.isArray(input.custom_models) || input.custom_models.length > 200 || input.custom_models.some(model => typeof model !== 'string' || !model.trim() || model.trim().length > 200)) {
+      throw new Error('自定义模型列表无效')
+    }
+    next.custom_models = [...new Set(input.custom_models.map(model => (model as string).trim()))]
+  }
   if (current.provider_id === 'custom') Object.assign(next, modelCatalogConfigPatch(input, current))
   if (input.name !== undefined) next.name = validateModelConfigurationName(input.name)
   if (current.provider_id === 'custom' && input.base_url_is_full !== undefined) {
@@ -213,6 +223,10 @@ export function updateModelConfiguration(settings: Settings, id: string, input: 
   if (input.auth_type !== undefined && current.provider_id === 'custom') {
     if (!isAnthropicAuthType(input.auth_type)) throw new Error('API Key 类型无效')
     next.auth_type = input.auth_type
+  }
+  if (input.weworker_protocol !== undefined && current.provider_id === 'custom') {
+    if (!isLlmProtocol(input.weworker_protocol)) throw new Error('WeWorker 对话协议无效')
+    next.weworker_protocol = input.weworker_protocol
   }
   const nameUpdates = modelConfigurationNameUpdates(settings)
   const model_configurations = { ...nameUpdates.model_configurations, [id]: { ...next, name: next.name || nameUpdates.model_configurations?.[id]?.name } }

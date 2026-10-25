@@ -16,6 +16,17 @@ function legacySettings(): Settings {
 }
 
 describe('multiple model configurations', () => {
+  it('persists a deduplicated custom model list and rejects invalid entries', () => {
+    const created = createModelConfiguration(legacySettings(), 'custom')
+    const state = { ...legacySettings(), ...created.updates }
+    const updates = updateModelConfiguration(state, created.id, { custom_models: ['my-model', ' my-model ', 'another-model'] })
+    const next = { ...state, ...updates }
+    expect(getModelConfiguration(next, created.id)?.custom_models).toEqual(['my-model', 'another-model'])
+    expect(publicModelConfigurations(next)[created.id].custom_models).toEqual(['my-model', 'another-model'])
+    expect(() => updateModelConfiguration(state, created.id, { custom_models: [''] })).toThrow('自定义模型列表无效')
+    expect(() => updateModelConfiguration(state, created.id, { custom_models: Array(201).fill('model') })).toThrow('自定义模型列表无效')
+  })
+
   it('fixes preset names and protects only fixed entries from rename and deletion', () => {
     const state = { ...legacySettings(), model_configuration_names: { anthropic: 'old name', glm: 'old name', deepseek: 'old name' } }
     const original = structuredClone(state)
@@ -47,6 +58,7 @@ describe('multiple model configurations', () => {
       openai_model: '', openai_api_key: '', openai_base_url: '', openai_base_url_is_full: false,
       auth_type: 'api_key', models_url: '', models_url_is_full: false, models_auth_type: 'inherit',
       openai_models_url: '', openai_models_url_is_full: false,
+      weworker_protocol: 'anthropic_messages',
     }
     const first = createModelConfiguration(legacy, 'custom')
     expect(first.updates.model_configurations[first.id]).toMatchObject(blank)
@@ -186,6 +198,20 @@ describe('multiple model configurations', () => {
     expect(() => updateModelConfiguration(state, created.id, { context_limit: -1 })).toThrow()
     expect(() => createModelConfiguration(state, 'builtin')).toThrow()
     expect(() => createModelConfiguration(state, 'builtin_dev')).toThrow()
+  })
+
+  it('persists the selected WeWorker conversation protocol and activates it with the model', () => {
+    const created = createModelConfiguration(legacySettings(), 'custom')
+    let state = { ...legacySettings(), ...created.updates }
+    state = { ...state, ...updateModelConfiguration(state, created.id, {
+      api_key: 'fixture-key', model: 'fixture-model', base_url: 'https://example.org/v1',
+      weworker_protocol: 'openai_chat_completions',
+    }) }
+
+    expect(state.model_configurations[created.id].weworker_protocol).toBe('openai_chat_completions')
+    state = { ...state, ...activateModelConfiguration(state, created.id) }
+    expect(state.active_weworker_protocol).toBe('openai_chat_completions')
+    expect(() => updateModelConfiguration(state, created.id, { weworker_protocol: 'unsupported' })).toThrow()
   })
 
   it('keeps custom website exploration credentials and model independent from Claude Code', () => {

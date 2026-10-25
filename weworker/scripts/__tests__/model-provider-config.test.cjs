@@ -279,6 +279,12 @@ test('Vite serves model metadata without encrypted credentials in development', 
     assert.ok(transformed?.code);
     assert.equal(transformed.code.includes('encryptedApiKey'), false);
     assert.equal(source.providers.filter(p => p.encryptedApiKey).some(p => transformed.code.includes(p.encryptedApiKey)), false);
+    const deployment = await server.transformRequest('/src/config/deployment.js');
+    assert.ok(deployment?.code);
+    assert.deepEqual(JSON.parse(server.config.define.__DEPLOYMENT_CONFIG__),
+      require('../../deployment-config.cjs').normalizeDeploymentConfig(require('../../deployment.json')));
+    assert.match(deployment.code, /deploymentConfig = __DEPLOYMENT_CONFIG__/);
+    assert.equal(deployment.code.includes('deployment-config.cjs'), false);
   } finally { await server.close(); }
 });
 
@@ -294,6 +300,10 @@ test('running Vite refreshes fixed-provider flags when the referenced JSON chang
   for (const filename of ['model-provider-config.cjs', 'build-profile-overlay.cjs', 'build-profile-validator.cjs']) {
     fs.copyFileSync(path.join(root, 'scripts', filename), path.join(directory, 'scripts', filename));
   }
+  fs.copyFileSync(path.join(root, 'deployment-config.cjs'), path.join(directory, 'deployment-config.cjs'));
+  fs.writeFileSync(path.join(directory, 'deployment.json'), JSON.stringify({
+    officialUrl: 'https://example.com', downloadUrl: 'https://example.com/downloads', githubUrl: 'https://example.org/releases',
+  }));
   fs.copyFileSync(path.join(root, 'renderer/vite.config.js'), path.join(renderer, 'vite.config.mjs'));
   fs.symlinkSync(fs.realpathSync(path.join(root, 'renderer/node_modules')), path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   fs.writeFileSync(path.join(directory, 'build-profile.json'), JSON.stringify({ adapters: [], modelProviders: './model.json' }));

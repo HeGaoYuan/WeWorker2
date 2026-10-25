@@ -1,11 +1,67 @@
 import test, { afterEach } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import vm from 'node:vm'
 import { scheduledTasksPageState } from '../utils/scheduled-tasks-view.js'
 import { useScheduledTasksStore } from '../store/scheduled-tasks.js'
 
 const initialState = useScheduledTasksStore.getState()
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
+
+test('failed rename or deletion leaves task data and selection intact', async () => {
+  globalThis.window = {}
+  const task = { id: 'example-task', title: 'Original task', enabled: true }
+  useScheduledTasksStore.setState({ tasks: [task], activeTaskId: task.id, executions: { [task.id]: [{ id: 'example-run' }] } })
+  globalThis.fetch = async () => Response.json({ error: 'Example rejection' }, { status: 500 })
+  await assert.rejects(useScheduledTasksStore.getState().updateTask(task.id, { title: 'New title' }), /Example rejection/)
+  await assert.rejects(useScheduledTasksStore.getState().deleteTask(task.id), /Example rejection/)
+  assert.deepEqual(useScheduledTasksStore.getState().tasks, [task])
+  assert.equal(useScheduledTasksStore.getState().activeTaskId, task.id)
+  assert.equal(useScheduledTasksStore.getState().executions[task.id].length, 1)
+})
+
+test('rename patches only the title and deletion clears only the target task', async () => {
+  globalThis.window = {}
+  const tasks = [{ id: 'example-one', title: 'One', enabled: true }, { id: 'example-two', title: 'Two' }]
+  useScheduledTasksStore.setState({ tasks, activeTaskId: tasks[0].id, executions: { 'example-one': [], 'example-two': [] } })
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.method, 'PATCH')
+    assert.deepEqual(JSON.parse(options.body), { title: 'Renamed' })
+    return Response.json({ ...tasks[0], title: 'Renamed' })
+  }
+  await useScheduledTasksStore.getState().updateTask(tasks[0].id, { title: 'Renamed' })
+  assert.equal(useScheduledTasksStore.getState().tasks[0].enabled, true)
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.method, 'DELETE')
+    return new Response(null, { status: 204 })
+  }
+  await useScheduledTasksStore.getState().deleteTask(tasks[0].id)
+  assert.deepEqual(useScheduledTasksStore.getState().tasks, [tasks[1]])
+  assert.equal(useScheduledTasksStore.getState().activeTaskId, null)
+  assert.deepEqual(useScheduledTasksStore.getState().executions, { 'example-two': [] })
+})
+
+test('creating a task from the sidebar requests an enabled schedule', async () => {
+  const source = fs.readFileSync(new URL('../components/layout/Sidebar.jsx', import.meta.url), 'utf8')
+  const start = source.indexOf('const handleCreateTask =')
+  const end = source.indexOf('const handleCreateWork =', start)
+  assert.ok(start >= 0 && end > start)
+  let requestedTask
+  const pageStore = { getState: () => ({ closePage() {} }) }
+  const context = vm.createContext({
+    leaveWebsiteExploration: async () => true,
+    useExplorationPageStore: pageStore,
+    useToolPackagePageStore: pageStore,
+    createTask: async (task) => { requestedTask = task; return { id: 'task-example', ...task } },
+    showAlert: (message) => assert.fail(message),
+  })
+
+  await vm.runInContext(`${source.slice(start, end)}\nhandleCreateTask()`, context)
+  assert.equal(requestedTask.enabled, true)
+  assert.equal(requestedTask.cron_expression, '0 * * * *')
+})
+
 afterEach(() => {
   globalThis.fetch = originalFetch
   globalThis.window = originalWindow

@@ -32,6 +32,8 @@ import UpdatePrompt from './components/sidebar/UpdatePrompt.jsx'
 import InitialSetup from './components/onboarding/InitialSetup.jsx'
 import { useAntdThemeConfig } from './theme/antd-theme.js'
 import { streamBackendEvents } from './api/http.js'
+import useResponsiveSidebar from './hooks/useResponsiveSidebar.js'
+import SidebarToggleIcon from './components/icons/SidebarToggleIcon.jsx'
 import './workspace-theme.css'
 
 
@@ -47,7 +49,6 @@ export default function App() {
   const [theme, setTheme] = useState(getInitialTheme)
   const themeSwitchTimerRef = useRef(null)
   const handleOpenDedicatedAgentsRef = useRef(async () => {})
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [appVersion, setAppVersion] = useState('')
   const [showExtensionGuide, setShowExtensionGuide] = useState(false)
   const isMac = window.electronAPI?.platform === 'darwin'
@@ -78,8 +79,10 @@ export default function App() {
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('sidebar_width')
-    return saved ? Number(saved) : 264
+    const width = Number(saved)
+    return saved && Number.isFinite(width) ? Math.min(480, Math.max(180, width)) : 264
   })
+  const { compact: compactLayout, collapsed: sidebarCollapsed, toggle: toggleSidebar } = useResponsiveSidebar(sidebarWidth)
   const SIDEBAR_MIN = 180
   const SIDEBAR_MAX = 480
   const draggingRef = useRef(false)
@@ -87,7 +90,6 @@ export default function App() {
   const startWidthRef = useRef(0)
   const loadWorks = useWorksStore((s) => s.loadWorks)
   const activeWorkId = useWorksStore((s) => s.activeWorkId)
-  const createWork = useWorksStore((s) => s.createWork)
   const scheduledTasks = useScheduledTasksStore((s) => s.tasks)
   const activeTaskId = useScheduledTasksStore((s) => s.activeTaskId)
   const tasksStatus = useScheduledTasksStore((s) => s.tasksStatus)
@@ -391,7 +393,8 @@ export default function App() {
                 <button
                   type="button"
                   aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-                  onClick={() => setSidebarCollapsed((current) => !current)}
+                  aria-expanded={!sidebarCollapsed}
+                  onClick={toggleSidebar}
                   style={{
                     WebkitAppRegion: 'no-drag',
                     background: 'none',
@@ -406,48 +409,7 @@ export default function App() {
                   onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
                   onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
                 >
-                  <svg
-                    className={`app-sidebar-toggle-icon${sidebarCollapsed ? ' is-collapsed' : ''}`}
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <line x1="9" y1="3" x2="9" y2="21" />
-                    <polyline points="14 8 10 12 14 16" />
-                  </svg>
-                </button>
-              </Tooltip>
-              <Tooltip text="新对话">
-                <button
-                  type="button"
-                  aria-label="新对话"
-                  onClick={() => createWork({ forceNew: true, projectId: null })}
-                  style={{
-                    WebkitAppRegion: 'no-drag',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                    borderRadius: 4,
-                    color: 'var(--text-secondary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    <line x1="12" y1="7" x2="12" y2="13"/>
-                    <line x1="9" y1="10" x2="15" y2="10"/>
-                  </svg>
+                  <SidebarToggleIcon collapsed={sidebarCollapsed} />
                 </button>
               </Tooltip>
             </>
@@ -484,7 +446,7 @@ export default function App() {
         ) : !onboardingCompleted ? (
           <InitialSetup onComplete={handleCompleteOnboarding} />
         ) : <>
-        <AppRail
+        {(!compactLayout || !sidebarCollapsed || showSettings || focusedWorkspaceOpen) && <AppRail
           extensionOpen={showExtensionGuide}
           activeSection={showSettings ? 'settings' : activeSidebarSection}
           settingsOpen={showSettings}
@@ -496,7 +458,7 @@ export default function App() {
           onOpenDedicatedAgents={handleOpenDedicatedAgents}
           onOpenExtension={() => { setShowSettings(false); setShowExtensionGuide(true) }}
           onOpenSettings={() => setShowSettings((current) => !current)}
-        />
+        />}
         {!showSettings && !focusedWorkspaceOpen && (
           <>
             <Sidebar section={activeSidebarSection} collapsed={sidebarCollapsed} width={sidebarWidth} />

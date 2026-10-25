@@ -110,7 +110,13 @@ export type CascadeMatchers = {
   /** Tier -2 */
   template: (message: string) => { tool: string; args: Record<string, unknown>; id: string } | null
   /** Tier -1 */
-  pattern: (message: string) => { tool: string; args: Record<string, unknown>; confidence: number } | null
+  pattern: (message: string) => {
+    tool: string
+    args: Record<string, unknown>
+    confidence: number
+    /** 配置里声明的渲染方式；`type: 'schema'` 时走声明式表格 */
+    render?: RouterRenderSpec
+  } | null
   /** 层 9 自动推断 */
   plan: (message: string) => { hit: ScenarioPlanHit } | null
   /** 第 11 层 */
@@ -317,7 +323,7 @@ export function planCascade(input: CascadeInput, deps: PlanCascadeDeps): Cascade
           tool: patternHit.tool,
           args: patternHit.args,
           source: 'pattern',
-          render: {},
+          render: { schemaId: patternHit.render?.type === 'schema' ? patternHit.render.schemaId : undefined },
           label: 'pattern',
         },
         onFailure: { action: 'stop', reason: STOP_REASON.pattern },

@@ -24,6 +24,8 @@ Adapter 根目录可维护 `icon.svg` 或 `icon.png`，图标随包校验、摘�
 
 Adapter 是唯一分发和安装单位。浏览器扩展承担浏览器执行与权限检查；embedded Toolkit Runtime 承担 Toolkit 执行。统一包管理不合并两种 Runner，不改变 WebCLI 不按业务 Schema 转换参数类型的约定。
 
+Extension 后台命令显式调用 `__webmcpWecliRuntime.validateArgs(args, schema)` 时，校验器按 Schema 将非空数字字符串转换为 `integer` / `number`，并兼容逗号分隔的整数数组；非法数字继续报 `INVALID_ARGS`。CLI 本身仍保留数字 flag 的字符串形式，JSON 数字保留原类型。声明为字符串的字段（含允许字符串的联合类型）以及未调用校验器的处理器保持原值，不会丢失 ID 的前导零。布尔值、对象及字符串数组使用 CLI 已支持的布尔或 JSON 语法。
+
 ## 目录与数据所有权
 
 | 内容 | 目标路径 | 所有权与行为 |

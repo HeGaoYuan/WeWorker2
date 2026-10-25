@@ -1,5 +1,5 @@
 import type { ProviderEntry } from './llm-egress.js'
-import { resolveAnthropicEndpoint, resolveOpenAiEndpoint } from './llm-egress.js'
+import { resolveAnthropicEndpoint, resolveOpenAiEndpoint, type LlmProtocol } from './llm-egress.js'
 import { resolveModelCatalogEndpoint, type ModelCatalogAuthType } from './model-catalog-config.js'
 import { buildAnthropicAuthHeaders } from './anthropic-auth.js'
 import type { AnthropicAuthType } from './anthropic-auth.js'
@@ -33,6 +33,9 @@ export interface ProviderAccessInput {
   modelsAuthType?: ModelCatalogAuthType
   openaiModelsUrl?: string
   openaiModelsUrlIsFull?: boolean
+  weworkerProtocol?: LlmProtocol
+  weworkerBaseUrl?: string
+  weworkerFullUrl?: boolean
 }
 
 export interface ProviderConnectionInput extends ProviderAccessInput {
@@ -113,11 +116,12 @@ async function fetchOpenAiModels(baseUrl: string, apiKey: string, fetchImpl: Fet
   return parseModelList(remote.body, remote.detail)
 }
 
-async function fetchExplicitModels(url: string, apiKey: string, authType: AnthropicAuthType, fetchImpl: FetchLike, fullUrl = true): Promise<string[]> {
+async function fetchExplicitModels(url: string, apiKey: string, authType: AnthropicAuthType, fetchImpl: FetchLike, fullUrl = true, protocol: LlmProtocol = 'anthropic_messages'): Promise<string[]> {
   const response = await fetchImpl(resolveModelCatalogEndpoint(url, fullUrl), {
     headers: {
-      ...buildAnthropicAuthHeaders(apiKey, 'custom', authType),
-      ...(authType === 'api_key' ? { 'anthropic-version': '2023-06-01' } : {}),
+      ...(protocol === 'openai_chat_completions'
+        ? { authorization: `Bearer ${apiKey}` }
+        : { ...buildAnthropicAuthHeaders(apiKey, 'custom', authType), ...(authType === 'api_key' ? { 'anthropic-version': '2023-06-01' } : {}) }),
     },
     signal: AbortSignal.timeout(15000),
     redirect: 'error',
@@ -134,11 +138,15 @@ export async function listProviderModels(
   const targetedCustom = input.provider.id === 'custom' && Boolean(input.target)
   const fallbackModels = targetedCustom ? [] : [...input.provider.models]
   if (targetedCustom) {
-    const openai = input.target === 'webwright'
-    const explicitUrl = openai ? input.openaiModelsUrl : input.modelsUrl
-    const address = explicitUrl || (openai ? input.openaiBaseUrl : input.anthropicBaseUrl)
-    const key = openai ? input.openaiApiKey : input.apiKey
-    const fullUrl = openai ? input.openaiFullUrl : input.anthropicFullUrl
+    const openai = input.target === 'webwright' || (input.target === 'weworker' && input.weworkerProtocol === 'openai_chat_completions')
+    const explicitUrl = input.target === 'webwright' ? input.openaiModelsUrl : input.modelsUrl
+    const address = explicitUrl || (input.target === 'webwright'
+      ? input.openaiBaseUrl
+      : input.weworkerBaseUrl || input.anthropicBaseUrl)
+    const key = input.target === 'webwright' ? input.openaiApiKey : input.apiKey
+    const fullUrl = input.target === 'webwright'
+      ? input.openaiFullUrl
+      : input.weworkerFullUrl ?? input.anthropicFullUrl
     if (!address?.trim() || !key?.trim()) return { models: [], source: 'fallback', warning: '请先填写此接口的地址和 API Key' }
     if (fullUrl && !explicitUrl) return { models: [], source: 'fallback', warning: '完整 URL 模式请单独填写模型列表地址' }
   }
@@ -148,8 +156,10 @@ export async function listProviderModels(
 
   const requests: Array<{ label: string; promise: Promise<string[]> }> = []
   if (input.provider.id === 'custom') {
+    const weworkerOpenAi = (input.weworkerProtocol || input.provider.weworker.protocol) === 'openai_chat_completions'
     if ((!input.target || input.target === 'weworker') && input.apiKey) {
-      if (input.modelsUrl) requests.push({ label: 'Claude Code 模型列表', promise: fetchExplicitModels(input.modelsUrl, input.apiKey, input.modelsAuthType === 'inherit' || !input.modelsAuthType ? input.anthropicAuthType || 'auth_token' : input.modelsAuthType, fetchImpl, input.modelsUrlIsFull) })
+      if (input.modelsUrl) requests.push({ label: weworkerOpenAi ? 'OpenAI 模型列表' : 'Claude Code 模型列表', promise: fetchExplicitModels(input.modelsUrl, input.apiKey, input.modelsAuthType === 'inherit' || !input.modelsAuthType ? input.anthropicAuthType || 'auth_token' : input.modelsAuthType, fetchImpl, input.modelsUrlIsFull, weworkerOpenAi ? 'openai_chat_completions' : 'anthropic_messages') })
+      else if (weworkerOpenAi && (input.weworkerBaseUrl || input.anthropicBaseUrl) && !(input.weworkerFullUrl ?? input.anthropicFullUrl)) requests.push({ label: 'OpenAI 模型列表', promise: fetchOpenAiModels(input.weworkerBaseUrl || input.anthropicBaseUrl!, input.apiKey, fetchImpl) })
       else if (input.anthropicBaseUrl && !input.anthropicFullUrl && findProviderByWeWorkerBaseUrl(input.anthropicBaseUrl)) {
         const knownProvider = findProviderByWeWorkerBaseUrl(input.anthropicBaseUrl)!
         requests.push({
@@ -159,7 +169,7 @@ export async function listProviderModels(
             : fetchAnthropicModels(knownProvider.weworker.baseUrl, input.apiKey, knownProvider.id, input.anthropicAuthType, fetchImpl),
         })
       }
-      else if (input.anthropicBaseUrl && !input.anthropicFullUrl) requests.push({ label: 'Claude Code 接口', promise: fetchAnthropicModels(input.anthropicBaseUrl, input.apiKey, input.provider.id, input.anthropicAuthType, fetchImpl) })
+      else if (!weworkerOpenAi && input.anthropicBaseUrl && !input.anthropicFullUrl) requests.push({ label: 'Claude Code 接口', promise: fetchAnthropicModels(input.anthropicBaseUrl, input.apiKey, input.provider.id, input.anthropicAuthType, fetchImpl) })
     }
     const openaiCatalogKey = input.openaiApiKey || (!input.target ? input.apiKey : '')
     if ((!input.target || input.target === 'webwright') && openaiCatalogKey) {
@@ -173,7 +183,7 @@ export async function listProviderModels(
   }
 
   if (requests.length === 0) {
-    return { models: fallbackModels, source: 'fallback', warning: input.anthropicFullUrl || input.openaiFullUrl
+    return { models: fallbackModels, source: 'fallback', warning: input.weworkerFullUrl || input.anthropicFullUrl || input.openaiFullUrl
       ? '完整 URL 模式不推断模型列表地址，请手动填写模型名称，或为任一协议配置基础 URL'
       : '模型列表接口未配置，显示内置模型列表' }
   }
@@ -232,9 +242,11 @@ export async function probeProviderProtocol(
   fetchImpl: FetchLike = fetch,
 ): Promise<ProtocolProbeResult> {
   const config = input.target === 'weworker' ? input.provider.weworker : input.provider.webwright
-  const protocol = config.protocol
+  const protocol = input.target === 'weworker' ? input.weworkerProtocol || config.protocol : config.protocol
   const baseUrl = input.provider.id === 'custom'
-    ? (protocol === 'anthropic_messages' ? input.anthropicBaseUrl : input.openaiBaseUrl)
+    ? input.target === 'weworker'
+      ? input.weworkerBaseUrl || input.anthropicBaseUrl
+      : (protocol === 'anthropic_messages' ? input.anthropicBaseUrl : input.openaiBaseUrl)
     : config.baseUrl
   const apiKey = input.target === 'webwright' ? (input.openaiApiKey || input.apiKey) : input.apiKey
   const model = input.target === 'webwright' ? (input.openaiModel || input.model) : input.model
@@ -243,9 +255,10 @@ export async function probeProviderProtocol(
   }
 
   const isAnthropic = protocol === 'anthropic_messages'
+  const weworkerFullUrl = input.weworkerFullUrl ?? input.anthropicFullUrl
   const endpoint = isAnthropic
-    ? resolveAnthropicEndpoint({ base_url: baseUrl, base_url_is_full: input.provider.id === 'custom' && input.anthropicFullUrl === true })
-    : resolveOpenAiEndpoint(baseUrl, input.provider.id === 'custom' && input.openaiFullUrl === true)
+    ? resolveAnthropicEndpoint({ base_url: baseUrl, base_url_is_full: input.provider.id === 'custom' && (input.target === 'weworker' ? weworkerFullUrl : input.anthropicFullUrl) === true })
+    : resolveOpenAiEndpoint(baseUrl, input.provider.id === 'custom' && (input.target === 'weworker' ? weworkerFullUrl : input.openaiFullUrl) === true)
   const headers: Record<string, string> = isAnthropic
     ? { ...buildAnthropicAuthHeaders(apiKey, effectiveAnthropicProviderId(input, baseUrl), input.anthropicAuthType), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }
     : { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }
@@ -327,6 +340,9 @@ export async function probeProviderProtocol(
 }
 
 export async function probeMainConnection(input: ProviderConnectionInput & { autoAuth?: boolean }, fetchImpl: FetchLike = fetch): Promise<ProtocolProbeResult> {
+  if ((input.weworkerProtocol || input.provider.weworker.protocol) === 'openai_chat_completions') {
+    return probeProviderProtocol({ ...input, target: 'weworker', verifyResponse: true }, fetchImpl)
+  }
   const authType = input.provider.id === 'custom' && findProviderByWeWorkerBaseUrl(input.anthropicBaseUrl)
     ? 'api_key'
     : input.anthropicAuthType || 'auth_token'

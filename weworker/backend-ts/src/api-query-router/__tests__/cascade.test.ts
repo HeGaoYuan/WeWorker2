@@ -136,6 +136,23 @@ describe('层级顺序（design §2 行 1~17）', () => {
     expect(layers(plan).indexOf('scenario')).toBeLessThan(layers(plan).indexOf('pattern'))
   })
 
+  it('Tier -1 的 schema 渲染声明会传到执行期决策', () => {
+    const plan = planCascade(
+      { message: '查看发票', workId: 'w', now: 0 },
+      {
+        matchers: matchers({
+          pattern: () => ({
+            ...tool('patternTool'),
+            confidence: 0.9,
+            render: { type: 'schema', schemaId: 'invoice-table' },
+          }),
+        }),
+        guards: guards(),
+      },
+    )
+    expect(findStep(plan, 'pattern').decision.render).toEqual({ schemaId: 'invoice-table' })
+  })
+
   it('硬约束②：Tier -2 在硬门之后、`!` 别名让位之前', () => {
     const plan = planCascade(
       { message: 'x', workId: 'w', now: 0 },
